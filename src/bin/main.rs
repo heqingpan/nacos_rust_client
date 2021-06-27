@@ -2,10 +2,10 @@ use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-use naocs_client::client::{
+use nacos_rust_client::client::{
     HostInfo
 };
-use naocs_client::client::config_client::{
+use nacos_rust_client::client::config_client::{
     ConfigClient,ConfigKey,ConfigListener
 };
 

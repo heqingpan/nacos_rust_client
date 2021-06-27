@@ -4,9 +4,7 @@ use std::sync::Arc;
 use std::{collections::HashMap,time::Duration};
 use anyhow::anyhow;
 
-use futures::TryFutureExt;
 use tokio::sync::RwLock;
-use futures::{select, future::FutureExt, pin_mut};
 
 use super::HostInfo;
 use super::get_md5;

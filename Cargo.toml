@@ -1,5 +1,5 @@
 [package]
-name = "naocs_client"
+name = "nacos_rust_client"
 version = "0.1.0"
 authors = ["heqingpan <heqingpan@126.com>"]
 edition = "2018"
@@ -13,4 +13,3 @@ serde = "1.0"
 serde_urlencoded = "0.6.1"
 tokio = {version="0.2.22",features=["full"]}
 rust-crypto="0.2.36"
-futures = "0.3.5"
