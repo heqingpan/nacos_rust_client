@@ -1,10 +1,12 @@
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::{collections::HashMap,time::Duration};
 use anyhow::anyhow;
 
-use serde::__private::de::borrow_cow_bytes;
+use futures::TryFutureExt;
 use tokio::sync::RwLock;
+use futures::{select, future::FutureExt, pin_mut};
 
 use super::HostInfo;
 use super::get_md5;
@@ -102,13 +104,17 @@ impl ListenerItem {
                 start = i+1;
             }
             else if char == 1 {
+                let mut endValue = String::new();
+                if start+1 <=i {
+                    endValue = configs[start..i].to_owned();
+                }
                 start = i+1;
-                if tmpList.len() == 2 {
-                    let key = ConfigKey::new(&tmpList[0],&tmpList[1],"");
+                if tmpList.len() == 1 {
+                    let key = ConfigKey::new(&tmpList[0],&endValue,"");
                     list.push(key);
                 }
                 else{
-                    let key = ConfigKey::new(&tmpList[0],&tmpList[1],&tmpList[2]);
+                    let key = ConfigKey::new(&tmpList[0],&tmpList[1],&endValue);
                     list.push(key);
                 }
                 tmpList.clear();
@@ -121,32 +127,21 @@ impl ListenerItem {
 pub struct ConfigClient{
     host:HostInfo,
     tenant:String,
-    subscribe_map:RwLock<HashMap<ConfigKey,Vec<Box<ConfigListener>>>>,
+    request_client:ConfigInnerRequestClient,
+    subscribe_sender:ConfigInnerMsgSenderType,
+    subscribe_map:RwLock<HashMap<ConfigKey,Vec<Box<ConfigListenerFunc>>>>,
     subscribe_context:RwLock<HashMap<ConfigKey,String>>,
 }
 
-//type ConfigListenerFunc =dyn Fn(&ConfigKey,&str);
-
-pub trait ConfigListener {
-    fn enable(&self) -> bool;
-    fn change(&self,key:&ConfigKey,value:&str) -> ();
+#[derive(Debug,Clone)]
+pub struct ConfigInnerRequestClient{
+    host:HostInfo,
 }
 
-impl ConfigClient {
-    pub fn new(host:HostInfo,tenant:String) -> Self {
+impl ConfigInnerRequestClient {
+    pub fn new(host:HostInfo) -> Self {
         Self{
             host,
-            tenant,
-            subscribe_map: Default::default(),
-            subscribe_context: Default::default(),
-        }
-    }
-
-    pub fn gene_config_key(&self,group:&str,data_id:&str) -> ConfigKey {
-        ConfigKey{
-            data_id:data_id.to_owned(),
-            group:group.to_owned(),
-            tenant:self.tenant.to_owned(),
         }
     }
 
@@ -179,7 +174,6 @@ impl ConfigClient {
             .timeout(Duration::from_secs(3000))
             .build().unwrap();
         let body = serde_urlencoded::to_string(&param).unwrap();
-        println!("{},{}",&url,&body);
         let res = client.post(&url)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body).send().await?;
@@ -214,112 +208,274 @@ impl ConfigClient {
         Ok(())
     }
 
-    pub async fn subscribe<T:ConfigListener+'static>(&self,key:ConfigKey,listener:T) {
-        let mut rt = self.subscribe_map.write().await;
-        let listener = Box::new(listener);
-        let list=rt.get_mut(&key);
-        match list {
-            Some(v) => {
-                v.push(listener);
-            },
-            None => {
-                rt.insert(key.clone(), vec![listener]);
-                self.subscribe_context.write().await.insert(key, "".to_owned());
-            },
-        };
+    pub async fn listene(&self,content:&str,timeout:Option<u64>) -> anyhow::Result<Vec<ConfigKey>> {
+        let mut param : HashMap<&str,&str> = HashMap::new();
+        let timeout = timeout.unwrap_or(30000u64);
+        let timeout_str = timeout.to_string();
+        param.insert("Listening-Configs", content);
+        let url = format!("http://{}:{}/nacos/v1/cs/configs/listener",self.host.ip,self.host.port);
+        let client = reqwest::Client::builder().connect_timeout(Duration::from_millis(1000))
+            .timeout(Duration::from_secs(timeout+1000))
+            .build().unwrap();
+        let body = serde_urlencoded::to_string(&param).unwrap();
+        let res = client.post(&url)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .header("Long-Pulling-Timeout", &timeout_str)
+            .body(body.to_owned()).send().await?;
+        let status = res.status().as_u16();
+        if status != 200u16 {
+            println!("{},{},{:?}",&url,&body,&res);
+            return Err(anyhow!("listener config error"));
+        }
+        let text = res.text().await?;
+        let t = format!("v={}",&text);
+        let map:HashMap<&str,String>=serde_urlencoded::from_str(&t).unwrap();
+        let text = map.get("v").unwrap_or(&text);
+        let items =ListenerItem::decode_listener_change_keys(&text);
+        Ok(items)
     }
+}
 
-    pub async fn run_listener_reactor(self:Arc<Self>) {
-        let this = self.clone();
-        //tokio::spawn(async move {
-        //    this.do_listener();
-        //});
-    }
+type ConfigListenerFunc =Fn(&ConfigKey,&str) + Send + 'static;
 
-    async fn do_listener(self) {
-        loop {
-            self.do_once_listener().await;
+pub trait ConfigListener {
+fn enable(&self) -> bool;
+fn change(&self,key:&ConfigKey,value:&str) -> ();
+}
+
+impl ConfigClient {
+    pub fn new(host:HostInfo,tenant:String) -> Self {
+        let request_client = ConfigInnerRequestClient::new(host.clone());
+        let (tx,rx) = tokio::sync::mpsc::channel::<ConfigInnerMsg>(100);
+        ConfigInnerSubscribeClient::new(request_client.clone(),rx).spawn();
+        Self{
+            host,
+            tenant,
+            request_client,
+            subscribe_sender:tx,
+            subscribe_map: Default::default(),
+            subscribe_context: Default::default(),
         }
     }
 
-    async fn do_once_listener(&self) -> anyhow::Result<()> {
-        let content = self.get_listener_body().await;
-        match content{
-            Some(content) => {
-                let mut param : HashMap<&str,&str> = HashMap::new();
-                param.insert("Listening-Configs", &content);
-                let url = format!("http://{}:{}/nacos/v1/cs/configs/listener",self.host.ip,self.host.port);
-                let client = reqwest::Client::builder().connect_timeout(Duration::from_millis(1000))
-                    .timeout(Duration::from_secs(30000+1000))
-                    .build().unwrap();
-                let body = serde_urlencoded::to_string(&param).unwrap();
-                let res = client.delete(&url)
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .header("Long-Pulling-Timeout", "30000")
-                    .body(body).send().await?;
-                let status = res.status().as_u16();
-                if status != 200u16 {
-                    println!("{:?}",&res);
-                    return Err(anyhow!("listener config error"));
-                }
-                let text = res.text().await?;
-                let items =ListenerItem::decode_listener_change_keys(&text);
-                for key in items {
-                    self.do_change_config(&key).await;
-                }
-            }
-            None => {
-
-            }
-        };
-        Ok(())
+    pub fn gene_config_key(&self,group:&str,data_id:&str) -> ConfigKey {
+        ConfigKey{
+            data_id:data_id.to_owned(),
+            group:group.to_owned(),
+            tenant:self.tenant.to_owned(),
+        }
     }
 
-    async fn get_listener_body(&self) -> Option<String> {
-        let rt = self.subscribe_context.read().await;
-        let items=rt.iter().collect::<Vec<_>>();
+    pub async fn get_config(&self,key:&ConfigKey) -> anyhow::Result<String> {
+        self.request_client.get_config(key).await
+    }
+
+    pub async fn set_config(&self,key:&ConfigKey,value:&str) -> anyhow::Result<()> {
+        self.request_client.set_config(key,value).await
+    }
+
+    pub async fn del_config(&self,key:&ConfigKey) -> anyhow::Result<()> {
+        self.request_client.del_config(key).await
+    }
+
+    pub async fn listene(&self,content:&str,timeout:Option<u64>) -> anyhow::Result<Vec<ConfigKey>> {
+        self.request_client.listene(content, timeout).await
+    }
+
+    pub async fn subscribe<T:Fn(&ConfigKey,&str) + Send + 'static>(&mut self,key:ConfigKey,listener:Box<T>) -> anyhow::Result<()> {
+        let id=0u64;
+        let md5=match self.get_config(&key).await{
+            Ok(text) => {
+                listener(&key,&text);
+                get_md5(&text)
+            }
+            Err(_) => {
+                "".to_owned()
+            },
+        };
+        let msg=ConfigInnerMsg::SUBSCRIBE(key,id,md5,listener);
+        self.subscribe_sender.send(msg).await;
+        Ok(())
+    }
+}
+enum ConfigInnerMsg {
+    SUBSCRIBE(ConfigKey,u64,String,Box<Fn(&ConfigKey,&str) + Send + 'static>),
+    REMOVE(ConfigKey,u64),
+}
+
+type ConfigInnerMsgSenderType = tokio::sync::mpsc::Sender<ConfigInnerMsg>;
+type ConfigInnerMsgReceiverType = tokio::sync::mpsc::Receiver<ConfigInnerMsg>;
+
+unsafe impl Send for ConfigInnerMsg {}
+
+struct ListeneValue {
+    md5:String,
+    listeners:Vec<(u64,Box<ConfigListenerFunc>)>,
+}
+
+impl ListeneValue {
+    fn new(listeners:Vec<(u64,Box<ConfigListenerFunc>)>,md5:String) -> Self {
+        Self{
+            md5,
+            listeners,
+        }
+    }
+
+    fn push(&mut self,id:u64,func:Box<ConfigListenerFunc>) {
+        self.listeners.push((id,func));
+    }
+
+    fn notify(&self,key:&ConfigKey,content:&str) {
+        for (_,func) in self.listeners.iter() {
+            func(key,content);
+        }
+    }
+
+    fn remove(&mut self,id:u64) -> usize{
+        let mut indexs = Vec::new();
+        for i in 0..self.listeners.len() {
+            match self.listeners.get(i){
+                Some((item_id,_)) => {
+                    if id==*item_id {
+                        indexs.push(i);
+                    }
+                },
+                None => {}
+            };
+        }
+        for index in indexs.iter().rev() {
+            let index = *index;
+            self.listeners.remove(index);
+        }
+        self.listeners.len()
+    }
+}
+
+
+pub struct ConfigInnerSubscribeClient{
+    request_client:ConfigInnerRequestClient,
+    rt:ConfigInnerMsgReceiverType,
+}
+
+impl ConfigInnerSubscribeClient {
+
+    fn new(request_client:ConfigInnerRequestClient,rt:ConfigInnerMsgReceiverType) -> Self {
+        Self {
+            request_client,
+            rt,
+        }
+    }
+
+    fn spawn(self) {
+        tokio::spawn(async move {
+            self.recv().await;
+        });
+    }
+
+    async fn recv(self) {
+        let mut rt = self.rt;
+        let mut subscribe_map:HashMap<ConfigKey,ListeneValue>=Default::default();
+        loop {
+            let has_msg=match rt.try_recv() {
+                Ok(msg) => {
+                    subscribe_map=Self::take_msg(msg, subscribe_map);
+                    true
+                },
+                Err(e) => {
+                    false
+                }
+            };
+            if has_msg {
+                continue;
+            }
+            subscribe_map = Self::do_once_listener(&self.request_client,subscribe_map).await;
+            tokio::time::delay_for(tokio::time::Duration::from_millis(50)).await;
+        }
+    }
+
+    fn take_msg(msg:ConfigInnerMsg,mut subscribe_map:HashMap<ConfigKey,ListeneValue>) -> HashMap<ConfigKey,ListeneValue> {
+        match msg {
+            ConfigInnerMsg::SUBSCRIBE(key,id,md5, func) => {
+                let list=subscribe_map.get_mut(&key);
+                match list {
+                    Some(v) => {
+                        v.push(id,func);
+                        if md5.len()> 0 {
+                            v.md5 = md5;
+                        }
+                    },
+                    None => {
+                        let v = ListeneValue::new(vec![(id,func)],md5);
+                        subscribe_map.insert(key, v);
+                    },
+                };
+            },
+            ConfigInnerMsg::REMOVE(key, id) => {
+                let list=subscribe_map.get_mut(&key);
+                match list {
+                    Some(v) => {
+                        let size=v.remove(id);
+                        if size == 0 {
+                            subscribe_map.remove(&key);
+                        }
+                    },
+                    None => {},
+                };
+
+            },
+        };
+        subscribe_map
+    }
+
+    async fn do_once_listener(request_client:&ConfigInnerRequestClient,subscribe_map:HashMap<ConfigKey,ListeneValue>) -> HashMap<ConfigKey,ListeneValue> {
+        let (content,mut subscribe_map) = Self::get_listener_body(subscribe_map);
+        //println!("do_once_listener,{:?}",content);
+        match content{
+            Some(content) => {
+                match request_client.listene(&content, None).await {
+                    Ok(items) => {
+                        for key in items {
+                            subscribe_map=Self::do_change_config(request_client,subscribe_map,&key).await;
+                            //let md5_value = "".to_owned();
+                            //Self::update_key_md5(&subscribe_map,&key,md5_value);
+                        }
+                    },
+                    Err(_) => {},
+                };
+            },
+            None => { }
+        };
+        subscribe_map
+    }
+
+    fn get_listener_body(subscribe_map:HashMap<ConfigKey,ListeneValue>) -> (Option<String>,HashMap<ConfigKey,ListeneValue>) {
+        let items=subscribe_map.iter().collect::<Vec<_>>();
         if items.len()==0 {
-            return None;
+            return (None,subscribe_map);
         }
         let mut body=String::new();
         for (k,v) in items {
-            //body+= &k.build_key() + "\x02"+ v;
-            body+= &format!("{}\x02{}\x02{}\x02{}\x01",k.data_id,k.group,v,k.tenant);
+            body+= &format!("{}\x02{}\x02{}\x02{}\x01",k.data_id,k.group,v.md5,k.tenant);
         }
-        Some(body)
+        (Some(body),subscribe_map)
     }
 
-    async fn do_change_config(&self,key:&ConfigKey) {
-        match self.get_config(key).await {
-            Ok(v)  => {
-                let md5 = get_md5(&v);
-                self.notify_listener(&key,&v).await;
-                self.update_key_md5(key.clone(), md5).await;
+
+    async fn do_change_config(request_client:&ConfigInnerRequestClient,mut subscribe_map:HashMap<ConfigKey,ListeneValue>,key:&ConfigKey) -> HashMap<ConfigKey,ListeneValue> {
+        match request_client.get_config(key).await {
+            Ok(content)  => {
+                let md5 = get_md5(&content);
+                match subscribe_map.get_mut(key) {
+                    Some(v) => {
+                        v.md5 = md5;
+                        v.notify(key, &content);
+                    },
+                    None => {}
+                }
             },
             Err(e) => {
             }
-        }
+        };
+        subscribe_map
     }
-
-    async fn update_key_md5(&self,key:ConfigKey,md5:String) {
-        self.subscribe_context.write().await.insert(key,md5);
-    }
-
-    async fn notify_listener(&self,key:&ConfigKey,content:&str) {
-        let rt = self.subscribe_map.read().await;
-        match rt.get(key){
-            Some(list) => {
-                for item in list {
-                    item.change(key, content);
-                }
-            },
-            None => {},
-        }
-    }
-
-}
-
-pub struct ConfigClientInner{
-    //subscribe_map:RwLock<HashMap<ConfigKey,Vec<Box<ConfigListener>>>>,
-    subscribe_context:RwLock<HashMap<ConfigKey,String>>,
 }

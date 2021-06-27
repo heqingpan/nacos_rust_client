@@ -59,6 +59,9 @@ async fn main() {
     println!("--------");
     println!("Hello, world!");
     test01().await;
+
+    tokio::signal::ctrl_c().await.expect("failed to listen for event");
+
 }
 
 struct L01;
@@ -73,16 +76,22 @@ impl ConfigListener for L01 {
     }
 }
 
+fn func1(key:&ConfigKey,content:&str){
+    println!("event:{:?},{}",key,content);
+}
+
 async fn test01(){
     let host = HostInfo::parse("127.0.0.1:8848");
-    let config_client = ConfigClient::new(host,String::new());
+    let mut config_client = ConfigClient::new(host,String::new());
     let key = config_client.gene_config_key("foo", "001");
     config_client.set_config(&key, "1234").await.unwrap();
     let v=config_client.get_config(&key).await.unwrap();
     println!("{:?},{}",&key,v);
-    config_client.del_config(&key).await.unwrap();
+    //config_client.del_config(&key).await.unwrap();
     let v=config_client.get_config(&key).await;
     println!("{:?},{:?}",&key,v);
-    let a = L01;
-    config_client.subscribe(key, a).await;
+    //let v = config_client.listene(&key,1000u64).await;
+    //let a = L01;
+    let listened = Box::new(func1);
+    config_client.subscribe(key, listened).await;
 }
