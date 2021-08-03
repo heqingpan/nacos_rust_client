@@ -237,8 +237,50 @@ impl ConfigInnerRequestClient {
 type ConfigListenerFunc =Fn(&ConfigKey,&str) + Send + 'static;
 
 pub trait ConfigListener {
-fn enable(&self) -> bool;
-fn change(&self,key:&ConfigKey,value:&str) -> ();
+    fn get_key(&self) -> ConfigKey;
+    fn change(&self,key:&ConfigKey,value:&str) -> ();
+}
+
+#[derive(Debug,Clone)]
+pub struct ConfigDefaultListener{
+    key:ConfigKey,
+    pub content:Arc<std::sync::RwLock<Option<String>>>,
+}
+
+impl ConfigDefaultListener {
+    pub fn new( key:ConfigKey) -> Self {
+        Self {
+            key,
+            content: Default::default(),
+        }
+    }
+
+    pub fn get_value(&self) -> Option<String> {
+        match self.content.read().unwrap().as_ref() {
+            Some(c) => {
+                Some(c.to_owned())
+            },
+            None => None,
+        }
+    }
+
+    fn set_value(content:Arc<std::sync::RwLock<Option<String>>>,text:String) {
+        let mut r = content.write().unwrap();
+        *r = Some(text);
+    }
+}
+
+impl ConfigListener for ConfigDefaultListener {
+    fn get_key(&self) -> ConfigKey {
+        self.key.clone()
+    }
+
+    fn change(&self,key:&ConfigKey,value:&str) -> () {
+        println!("ConfigDefaultListener change:{:?},{}",key,value);
+        let content = self.content.clone();
+        Self::set_value(content, value.to_owned());
+        ()
+    }
 }
 
 impl ConfigClient {
@@ -256,7 +298,7 @@ impl ConfigClient {
         }
     }
 
-    pub fn gene_config_key(&self,group:&str,data_id:&str) -> ConfigKey {
+    pub fn gene_config_key(&self,data_id:&str,group:&str) -> ConfigKey {
         ConfigKey{
             data_id:data_id.to_owned(),
             group:group.to_owned(),
@@ -280,11 +322,16 @@ impl ConfigClient {
         self.request_client.listene(content, timeout).await
     }
 
-    pub async fn subscribe<T:Fn(&ConfigKey,&str) + Send + 'static>(&mut self,key:ConfigKey,listener:Box<T>) -> anyhow::Result<()> {
+    pub async fn subscribe<T:ConfigListener + Send + 'static>(&mut self,listener:Box<T>) -> anyhow::Result<()> {
+        let key = listener.get_key();
+        self.subscribe_with_key(key, listener).await
+    }
+
+    pub async fn subscribe_with_key<T:ConfigListener + Send + 'static>(&mut self,key:ConfigKey,listener:Box<T>) -> anyhow::Result<()> {
         let id=0u64;
         let md5=match self.get_config(&key).await{
             Ok(text) => {
-                listener(&key,&text);
+                listener.change(&key,&text);
                 get_md5(&text)
             }
             Err(_) => {
@@ -297,35 +344,35 @@ impl ConfigClient {
     }
 }
 enum ConfigInnerMsg {
-    SUBSCRIBE(ConfigKey,u64,String,Box<Fn(&ConfigKey,&str) + Send + 'static>),
+    SUBSCRIBE(ConfigKey,u64,String,Box<ConfigListener + Send + 'static>),
     REMOVE(ConfigKey,u64),
 }
 
 type ConfigInnerMsgSenderType = tokio::sync::mpsc::Sender<ConfigInnerMsg>;
 type ConfigInnerMsgReceiverType = tokio::sync::mpsc::Receiver<ConfigInnerMsg>;
 
-unsafe impl Send for ConfigInnerMsg {}
+//unsafe impl Send for ConfigInnerMsg {}
 
 struct ListeneValue {
     md5:String,
-    listeners:Vec<(u64,Box<ConfigListenerFunc>)>,
+    listeners:Vec<(u64,Box<ConfigListener + Send>)>,
 }
 
 impl ListeneValue {
-    fn new(listeners:Vec<(u64,Box<ConfigListenerFunc>)>,md5:String) -> Self {
+    fn new(listeners:Vec<(u64,Box<ConfigListener + Send>)>,md5:String) -> Self {
         Self{
             md5,
             listeners,
         }
     }
 
-    fn push(&mut self,id:u64,func:Box<ConfigListenerFunc>) {
+    fn push(&mut self,id:u64,func:Box<ConfigListener + Send>) {
         self.listeners.push((id,func));
     }
 
     fn notify(&self,key:&ConfigKey,content:&str) {
         for (_,func) in self.listeners.iter() {
-            func(key,content);
+            func.change(key,content);
         }
     }
 

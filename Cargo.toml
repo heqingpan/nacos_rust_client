@@ -2,6 +2,11 @@
 name = "nacos_rust_client"
 version = "0.1.0"
 authors = ["heqingpan <heqingpan@126.com>"]
+license = "MIT/Apache-2.0"
+description = "nacos rust client"
+repository = "https://gitee.com/hqp/nacos_rust_client"
+readme = "README.md"
+keywords = ["nacos", "client"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

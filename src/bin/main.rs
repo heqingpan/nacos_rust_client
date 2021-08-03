@@ -6,7 +6,7 @@ use nacos_rust_client::client::{
     HostInfo
 };
 use nacos_rust_client::client::config_client::{
-    ConfigClient,ConfigKey,ConfigListener
+    ConfigClient,ConfigKey,ConfigListener,ConfigDefaultListener
 };
 
 struct MyItem {
@@ -67,11 +67,11 @@ async fn main() {
 struct L01;
 
 impl ConfigListener for L01 {
-    fn enable(&self) -> bool {
-        true
+    fn get_key(&self) -> ConfigKey {
+        ConfigKey::new("001","foo","")
     }
-    fn change(&self,key:&ConfigKey,value:&str) -> () {
-        println!("{:?}",&key);
+    fn change(&self,key:&ConfigKey,content:&str) -> () {
+        println!("{:?},{}",&key,content);
         ()
     }
 }
@@ -83,7 +83,7 @@ fn func1(key:&ConfigKey,content:&str){
 async fn test01(){
     let host = HostInfo::parse("127.0.0.1:8848");
     let mut config_client = ConfigClient::new(host,String::new());
-    let key = config_client.gene_config_key("foo", "001");
+    let key = config_client.gene_config_key("001", "foo");
     config_client.set_config(&key, "1234").await.unwrap();
     let v=config_client.get_config(&key).await.unwrap();
     println!("{:?},{}",&key,v);
@@ -91,7 +91,18 @@ async fn test01(){
     let v=config_client.get_config(&key).await;
     println!("{:?},{:?}",&key,v);
     //let v = config_client.listene(&key,1000u64).await;
-    //let a = L01;
+    let a = Box::new(L01);
     let listened = Box::new(func1);
-    config_client.subscribe(key, listened).await;
+    config_client.subscribe(a).await;
+
+    let key = ConfigKey::new("002","foo","");
+    let c = Box::new(ConfigDefaultListener::new(key.clone()));
+    config_client.set_config(&key,"1234").await.unwrap();
+    config_client.subscribe(c).await;
+
+    let key = ConfigKey::new("003","foo","");
+    let c = Box::new(ConfigDefaultListener::new(key.clone()));
+    let d = c.clone();
+    config_client.set_config(&key,"1234").await.unwrap();
+    config_client.subscribe(c).await;
 }
