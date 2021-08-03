@@ -5,6 +5,7 @@ authors = ["heqingpan <heqingpan@126.com>"]
 license = "MIT/Apache-2.0"
 description = "nacos rust client"
 repository = "https://gitee.com/hqp/nacos_rust_client"
+homepage = "https://gitee.com/hqp/nacos_rust_client"
 readme = "README.md"
 keywords = ["nacos", "client"]
 edition = "2018"
