@@ -64,13 +64,15 @@ impl ListenerItem {
                 if tmpList.len() > 2{
                     continue;
                 }
-                tmpList.push(configs[start..i].to_owned());
+                //tmpList.push(configs[start..i].to_owned());
+                tmpList.push(String::from_utf8(configs[start..i].into()).unwrap());
                 start = i+1;
             }
             else if char == 1 {
                 let mut endValue = String::new();
                 if start+1 <=i {
-                    endValue = configs[start..i].to_owned();
+                    //endValue = configs[start..i].to_owned();
+                    endValue = String::from_utf8(configs[start..i].into()).unwrap();
                 }
                 start = i+1;
                 if tmpList.len() == 2 {
@@ -241,36 +243,37 @@ pub trait ConfigListener {
     fn change(&self,key:&ConfigKey,value:&str) -> ();
 }
 
-#[derive(Debug,Clone)]
-pub struct ConfigDefaultListener{
+pub struct ConfigDefaultListener<T>
+{
     key:ConfigKey,
-    pub content:Arc<std::sync::RwLock<Option<String>>>,
+    pub content:Arc<std::sync::RwLock<Option<Arc<T>>>>,
+    pub convert:Box<Fn(&str)-> Option<T>+Send >,
 }
 
-impl ConfigDefaultListener {
-    pub fn new( key:ConfigKey) -> Self {
+impl <T> ConfigDefaultListener <T>
+ {
+    pub fn new( key:ConfigKey,convert:Box<Fn(&str)-> Option<T>+Send>) -> Self {
         Self {
             key,
             content: Default::default(),
+            convert,
         }
     }
 
-    pub fn get_value(&self) -> Option<String> {
+    pub fn get_value(&self) -> Option<Arc<T>> {
         match self.content.read().unwrap().as_ref() {
-            Some(c) => {
-                Some(c.to_owned())
-            },
-            None => None,
+            Some(c) => Some(c.clone()),
+            _ => None
         }
     }
 
-    fn set_value(content:Arc<std::sync::RwLock<Option<String>>>,text:String) {
+    fn set_value(content:Arc<std::sync::RwLock<Option<Arc<T>>>>,value:T) {
         let mut r = content.write().unwrap();
-        *r = Some(text);
+        *r = Some(Arc::new(value));
     }
 }
 
-impl ConfigListener for ConfigDefaultListener {
+impl <T> ConfigListener for ConfigDefaultListener<T> {
     fn get_key(&self) -> ConfigKey {
         self.key.clone()
     }
@@ -278,7 +281,10 @@ impl ConfigListener for ConfigDefaultListener {
     fn change(&self,key:&ConfigKey,value:&str) -> () {
         println!("ConfigDefaultListener change:{:?},{}",key,value);
         let content = self.content.clone();
-        Self::set_value(content, value.to_owned());
+        let  convert = self.convert.as_ref();
+        if let Some(value) = convert(value){
+            Self::set_value(content, value);
+        }
         ()
     }
 }
