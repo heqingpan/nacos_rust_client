@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use nacos_rust_client::client::{
     HostInfo
@@ -54,13 +55,13 @@ async fn test01(){
     config_client.subscribe(a).await;
 
     let key = ConfigKey::new("002","foo","");
-    let c = Box::new(ConfigDefaultListener::new(key.clone(),Box::new(func2)));
+    let c = Box::new(ConfigDefaultListener::new(key.clone(),Arc::new(func2)));
     config_client.set_config(&key,"1234").await.unwrap();
     config_client.subscribe(c).await;
 
     let key = ConfigKey::new("003","foo","");
-    let c = Box::new(ConfigDefaultListener::new(key.clone(),Box::new(func2)));
-    //let d = c.clone();
+    let c = Box::new(ConfigDefaultListener::new(key.clone(),Arc::new(func2)));
+    let d = c.clone();
     config_client.set_config(&key,"1234").await.unwrap();
-    config_client.subscribe(c).await;
+    config_client.subscribe(d).await;
 }

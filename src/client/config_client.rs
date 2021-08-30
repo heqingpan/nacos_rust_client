@@ -243,16 +243,17 @@ pub trait ConfigListener {
     fn change(&self,key:&ConfigKey,value:&str) -> ();
 }
 
+#[derive(Clone)]
 pub struct ConfigDefaultListener<T>
 {
     key:ConfigKey,
     pub content:Arc<std::sync::RwLock<Option<Arc<T>>>>,
-    pub convert:Box<Fn(&str)-> Option<T>+Send >,
+    pub convert:Arc<Fn(&str)-> Option<T>+Send+Sync>,
 }
 
 impl <T> ConfigDefaultListener <T>
  {
-    pub fn new( key:ConfigKey,convert:Box<Fn(&str)-> Option<T>+Send>) -> Self {
+    pub fn new( key:ConfigKey,convert:Arc<Fn(&str)-> Option<T>+Send+Sync>) -> Self {
         Self {
             key,
             content: Default::default(),
