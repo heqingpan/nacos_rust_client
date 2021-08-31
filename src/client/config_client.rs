@@ -9,6 +9,9 @@ use tokio::sync::RwLock;
 use super::HostInfo;
 use super::get_md5;
 
+fn ms(millis:u64) -> Duration {
+    Duration::from_millis(millis)
+}
 
 #[derive(Debug,Hash,Eq,Clone)]
 pub struct ConfigKey {
@@ -426,22 +429,22 @@ impl ConfigInnerSubscribeClient {
 
     async fn recv(self) {
         let mut rt = self.rt;
+        //let request_client = self.request_client.clone();
         let mut subscribe_map:HashMap<ConfigKey,ListeneValue>=Default::default();
         loop {
-            let has_msg=match rt.try_recv() {
-                Ok(msg) => {
+            let mut has_msg=false;
+            tokio::select! {
+                Some(msg) = rt.recv() => {
                     subscribe_map=Self::take_msg(msg, subscribe_map);
-                    true
+                    has_msg=true;
                 },
-                Err(e) => {
-                    false
-                }
-            };
+                _ = tokio::time::sleep(ms(1)) => {},
+            }
             if has_msg {
                 continue;
             }
             subscribe_map = Self::do_once_listener(&self.request_client,subscribe_map).await;
-            tokio::time::delay_for(tokio::time::Duration::from_millis(50)).await;
+            tokio::time::sleep(ms(5)).await;
         }
     }
 
