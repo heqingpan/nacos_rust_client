@@ -2,6 +2,9 @@ use std::collections::HashMap;
 
 pub mod nacos_client;
 pub mod config_client;
+pub mod naming_client;
+
+pub mod utils;
 
 use crypto::digest::Digest;
 
@@ -12,6 +15,14 @@ pub use self::config_client::ConfigClient;
 pub struct HostInfo {
     pub ip:String,
     pub port:u32,
+}
+
+pub fn now_millis() -> u64 {
+    use std::time::SystemTime;
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
 }
 
 pub fn get_md5(content:&str) -> String {
@@ -76,3 +87,4 @@ impl Client {
         Ok(text)
     }
 }
+

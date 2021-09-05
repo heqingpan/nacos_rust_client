@@ -103,13 +103,15 @@ impl ListenerItem {
                 if tmpList.len() > 2{
                     continue;
                 }
-                tmpList.push(configs[start..i].to_owned());
+                //tmpList.push(configs[start..i].to_owned());
+                tmpList.push(String::from_utf8(configs[start..i].into()).unwrap());
                 start = i+1;
             }
             else if char == 1 {
                 let mut endValue = String::new();
                 if start+1 <=i {
-                    endValue = configs[start..i].to_owned();
+                    //endValue = configs[start..i].to_owned();
+                    endValue = String::from_utf8(configs[start..i].into()).unwrap();
                 }
                 start = i+1;
                 if tmpList.len() == 1 {
