@@ -218,13 +218,17 @@ impl InnerNamingRegister {
             client.remove(&instance).await.unwrap();
             instance
         }.into_actor(self)
-        .map(|_,_,ctx|{}).wait(ctx);
+        .map(|_,_,ctx|{}).spawn(ctx);
     }
 
     fn remove_all_instance(&mut self,ctx:&mut actix::Context<Self>) {
         let client = self.request_client.clone();
         let instances = self.instances.clone();
+        for (_,instance) in instances {
+            self.remove_instance(instance,ctx);
+        }
         self.instances = HashMap::new();
+        /*
         async move {
             for (_,instance) in instances.iter() {
                 client.remove(&instance).await.unwrap();
@@ -234,7 +238,8 @@ impl InnerNamingRegister {
         .map(|_,act,ctx|{
             act.stop_remove_all=true;
             ctx.stop();
-        }).wait(ctx);
+        }).spawn(ctx);
+        */
     }
 }
 
@@ -244,14 +249,6 @@ impl Actor for InnerNamingRegister {
     fn started(&mut self,ctx: &mut Self::Context) {
         println!(" InnerNamingRegister started");
         self.hb(ctx);
-        /*
-        let addr = ctx.address();
-        async {
-            tokio::spawn(async{task_02(addr).await});
-        }.into_actor(self)
-        .map(|_,_,_|{})
-        .wait(ctx);
-        */
     }
 
     fn stopping(&mut self,ctx: &mut Self::Context) -> Running {
@@ -295,7 +292,7 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                 .map(|instance,act,_|{
                     act.instances.insert(key, instance);
                 })
-                .wait(ctx);
+                .spawn(ctx);
             },
             NamingRegisterCmd::Remove(instance) => {
                 let key = instance.generate_key();
@@ -314,7 +311,7 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                         async move {
                             client.heartbeat(beat_string).await.unwrap();
                         }.into_actor(self)
-                        .map(|_,_,_|{}).wait(ctx);
+                        .map(|_,_,_|{}).spawn(ctx);
                     }
                     self.timeout_set.add(time+self.period, key);
                 }
@@ -466,7 +463,7 @@ impl InnerNamingListener {
                     },
                 };
             })
-            .wait(ctx);
+            .spawn(ctx);
         }
     }
 
