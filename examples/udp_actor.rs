@@ -13,18 +13,38 @@ use tokio::sync::Mutex;
 
 const MAX_DATAGRAM_SIZE: usize = 65_507;
 pub struct UdpWorker{
-    socket:Arc<UdpSocket>,
+    local_addr:Option<String>,
+    socket:Option<Arc<UdpSocket>>,
 }
 
 impl UdpWorker {
-    pub fn new(socket:UdpSocket) -> Self{
+    pub fn new(addr:Option<String>) -> Self{
         Self{
-            socket:Arc::new(socket),
+            local_addr:addr,
+            socket:None,
         }
     }
 
-    fn loop_recv(&self,ctx:&mut actix::Context<Self>) {
-        let socket = self.socket.clone();
+    fn init(&self,ctx:&mut actix::Context<Self>){
+        self.init_socket(ctx);
+        //self.init_loop_recv(ctx);
+    }
+
+    fn init_socket(&self,ctx:&mut actix::Context<Self>){
+        let local_addr =if let Some(addr)= self.local_addr.as_ref() {
+            addr.to_owned()
+        }else {"0.0.0.0:0".to_owned()};
+        async move {
+            UdpSocket::bind(&local_addr).await.unwrap()
+        }
+        .into_actor(self).map(|r,act,ctx|{
+            act.socket = Some(Arc::new(r));
+            act.init_loop_recv(ctx);
+        }).wait(ctx);
+    }
+
+    fn init_loop_recv(&self,ctx:&mut actix::Context<Self>) {
+        let socket = self.socket.as_ref().unwrap().clone();
         async move {
                     let mut buf=vec![0u8;MAX_DATAGRAM_SIZE];
                     loop{
@@ -53,7 +73,7 @@ impl Actor for UdpWorker {
 
     fn started(&mut self,ctx: &mut Self::Context) {
         println!(" UdpWorker started");
-        self.loop_recv(ctx);
+        self.init(ctx);
     }
 }
 
@@ -76,7 +96,7 @@ impl UdpSenderCmd{
 impl Handler<UdpSenderCmd> for UdpWorker {
     type Result = Result<(),std::io::Error>;
     fn handle(&mut self,msg:UdpSenderCmd,ctx: &mut Context<Self>) -> Self::Result {
-        let socket = self.socket.clone();
+        let socket = self.socket.as_ref().unwrap().clone();
         async move{
             socket.send_to(&msg.data, msg.target_addr).await;
         }
@@ -99,12 +119,13 @@ fn send(sender:Addr<UdpWorker>,remote_addr:SocketAddr){
     }
 }
 
-fn init_actor(socket:UdpSocket) -> Addr<UdpWorker> {
+fn init_actor(addr:&str) -> Addr<UdpWorker> {
+    let addr = if addr.len()>0 {Some(addr.to_owned())}else{None};
     let (tx,rx) = std::sync::mpsc::sync_channel(1);
     std::thread::spawn(move || {
         let rt = System::new();
         let addrs = rt.block_on(async {
-            UdpWorker::new(socket).start()
+            UdpWorker::new(addr).start()
         });
         tx.send(addrs);
         rt.run();
@@ -125,15 +146,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("addr:{:?}", &remote_addr);
 
     // We use port 0 to let the operating system allocate an available port for us.
-    let local_addr: SocketAddr = env::args()
+    let local_addr: String= env::args()
         .nth(2)
         .unwrap_or_else(|| "0.0.0.0:0".into())
         .parse()?;
     println!("local_addr:{:?}", &local_addr);
 
-    let socket = UdpSocket::bind(local_addr).await?;
+    //let socket = UdpSocket::bind(local_addr).await?;
 
-    let worker = init_actor(socket);
+    let worker = init_actor(&local_addr);
     std::thread::spawn(move || send(worker,remote_addr));
     let ctrl_c = signal::ctrl_c().await;
     Ok(())
