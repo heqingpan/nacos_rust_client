@@ -25,12 +25,23 @@ impl UdpWorker {
         }
     }
 
+    pub fn new_with_socket(socket:UdpSocket) -> Self{
+        Self{
+            local_addr:None,
+            socket:Some(Arc::new(socket)),
+        }
+    }
+
     fn init(&self,ctx:&mut actix::Context<Self>){
         self.init_socket(ctx);
         //self.init_loop_recv(ctx);
     }
 
     fn init_socket(&self,ctx:&mut actix::Context<Self>){
+        if self.socket.is_some(){
+            self.init_loop_recv(ctx);
+            return;
+        }
         let local_addr =if let Some(addr)= self.local_addr.as_ref() {
             addr.to_owned()
         }else {"0.0.0.0:0".to_owned()};
@@ -120,12 +131,15 @@ fn send(sender:Addr<UdpWorker>,remote_addr:SocketAddr){
 }
 
 fn init_actor(addr:&str) -> Addr<UdpWorker> {
+    let addr_str=addr.to_owned();
     let addr = if addr.len()>0 {Some(addr.to_owned())}else{None};
     let (tx,rx) = std::sync::mpsc::sync_channel(1);
     std::thread::spawn(move || {
         let rt = System::new();
         let addrs = rt.block_on(async {
-            UdpWorker::new(addr).start()
+            let socket=UdpSocket::bind(&addr_str).await.unwrap();
+            UdpWorker::new_with_socket(socket).start()
+            //UdpWorker::new(addr).start()
         });
         tx.send(addrs);
         rt.run();
@@ -135,10 +149,9 @@ fn init_actor(addr:&str) -> Addr<UdpWorker> {
 }
 
 //#[tokio::main]
-#[tokio::main]
+//#[tokio::main]
 //#[actix_rt::main] 
-async fn main() -> Result<(), Box<dyn Error>> {
-    println!("notify udp");
+fn main() -> Result<(), Box<dyn Error>> {
     let remote_addr: SocketAddr = env::args()
         .nth(1)
         .unwrap_or_else(|| "127.0.0.1:8080".into())
@@ -155,7 +168,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //let socket = UdpSocket::bind(local_addr).await?;
 
     let worker = init_actor(&local_addr);
-    std::thread::spawn(move || send(worker,remote_addr));
-    let ctrl_c = signal::ctrl_c().await;
+    let f=std::thread::spawn(move || send(worker,remote_addr));
+    f.join();
+    //let ctrl_c = signal::ctrl_c().await;
     Ok(())
 }

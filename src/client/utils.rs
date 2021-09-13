@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::io::Read;
 use std::time::Duration;
 use std::{collections::HashMap, str::FromStr};
 
@@ -85,6 +86,39 @@ impl Utils {
         else{
             let resp=client.request(req).await?;
             Self::get_response_wrap(resp).await
+        }
+    }
+
+    pub fn gz_encode(data:&[u8],threshold:usize) -> Vec<u8> {
+        use flate2::read::GzEncoder;
+        if data.len() <= threshold {
+            data.to_vec()
+        }
+        else{
+            let mut result = Vec::new();
+            let mut z = GzEncoder::new(data,flate2::Compression::fast());
+            z.read_to_end(&mut result).unwrap();
+            result
+        }
+    }
+
+    pub fn is_gzdata(data:&[u8]) -> bool {
+        if data.len()>2 {
+            return data[0]==0x1f && data[1]==0x8b;
+        }
+        false
+    }
+
+    pub fn gz_decode(data:&[u8]) -> Option<Vec<u8>>{
+        if !Self::is_gzdata(data) {
+            return None
+        }
+        use flate2::read::GzDecoder;
+        let mut result = Vec::new();
+        let mut z = GzDecoder::new(data);
+        match z.read_to_end(&mut result){
+            Ok(_) => Some(result),
+            Err(_) => None,
         }
     }
 }
