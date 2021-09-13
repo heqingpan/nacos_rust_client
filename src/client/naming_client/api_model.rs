@@ -173,13 +173,20 @@ impl NamingUtils {
     }
 
     pub fn select_by_weight(weight_list:&Vec<u64>) -> usize {
+        use rand::prelude::*;
+        use rand::distributions::Uniform;
+
         let mut superposition_list = vec![];
         let mut sum=0;
         for v in weight_list {
             sum+= *v;
             superposition_list.push(sum);
         }
-        let rand_value= rand::thread_rng().gen_range(0..sum);
+        //let rng = rand::thread_rng();
+        let mut rng: StdRng = StdRng::from_entropy();
+        let range_uniform=Uniform::new(0,sum);
+        let rand_value = range_uniform.sample(&mut rng);
+        //let rand_value= rand::thread_rng().gen_range(0..sum);
         Self::do_select_index(&superposition_list, rand_value)
     }
 
