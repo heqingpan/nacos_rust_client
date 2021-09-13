@@ -11,8 +11,10 @@ use crate::client::HostInfo;
 use super::utils::{self,Utils};
 
 mod api_model;
+mod udp_actor;
 
 pub use api_model::{BeatInfo,BeatRequest,InstanceWebParams,InstanceWebQueryListParams,QueryListResult,NamingUtils,InstanceVO};
+pub use udp_actor::{UdpWorker,UdpDataCmd};
 
 static REGISTER_PERIOD :u64 = 5000u64;
 
@@ -360,6 +362,8 @@ pub struct QueryInstanceListParams{
     pub service_name:String,
     pub clusters:Option<Vec<String>>,
     pub healthy_only:bool,
+    client_ip:Option<String>,
+    udp_port:Option<u16>
 }
 
 impl QueryInstanceListParams{
@@ -370,6 +374,8 @@ impl QueryInstanceListParams{
             service_name:service_name.to_owned(),
             clusters:clusters,
             healthy_only,
+            client_ip:None,
+            udp_port:None,
         }
     }
 
@@ -386,6 +392,8 @@ impl QueryInstanceListParams{
             params.clusters = clusters.join(",")
         }
         params.healthyOnly=self.healthy_only;
+        params.clientIP=self.client_ip.clone();
+        params.udpPort=self.udp_port;
         params
     }
 }
@@ -429,11 +437,12 @@ pub struct InnerNamingListener {
     request_client:InnerNamingRequestClient,
     period: u64,
     client_ip:String,
-    udp_port:Option<u32>,
+    udp_port:u16,
+    udp_addr:Addr<UdpWorker>,
 }
 
 impl InnerNamingListener {
-    pub fn new(namespace_id:&str,client_ip:&str,host:HostInfo) -> Self{
+    pub fn new(namespace_id:&str,client_ip:&str,udp_port:u16,host:HostInfo,udp_addr:Addr<UdpWorker>) -> Self{
         Self{
             namespace_id:namespace_id.to_owned(),
             listeners: Default::default(),
@@ -442,7 +451,8 @@ impl InnerNamingListener {
             request_client: InnerNamingRequestClient::new(host),
             period:3000,
             client_ip:client_ip.to_owned(),
-            udp_port:None,
+            udp_port:udp_port,
+            udp_addr,
         }
     }
 
@@ -597,6 +607,8 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                     instances.params.service_name=key.service_name;
                     instances.params.namespace_id=self.namespace_id.to_owned();
                     instances.params.healthy_only=false;
+                    instances.params.client_ip=Some(self.client_ip.clone());
+                    instances.params.udp_port = Some(self.udp_port);
                     instances.next_time=current_time;
                     self.instances.insert(key_str.clone(), instances);
                     //self.timeout_set.add(0u64,key_str);
@@ -624,6 +636,7 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                 let mut is_query=false;
                 if let Some(instance_warp) = self.instances.get_mut(&key) {
                     if instance_warp.next_time> time {
+                        self.timeout_set.add(instance_warp.next_time,key.clone());
                         return Ok(())
                     }
                     is_query=true;
@@ -636,6 +649,36 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                 }
             },
         };
+        Ok(())
+    }
+}
+
+impl Handler<UdpDataCmd> for InnerNamingListener {
+    type Result = Result<(),std::io::Error>;
+    fn handle(&mut self,msg:UdpDataCmd,ctx: &mut Context<Self>) -> Self::Result {
+        let data = match Utils::gz_decode(&msg.data){
+            Some(data) => data,
+            None => msg.data,
+        };
+        let map:HashMap<String,String> = serde_json::from_slice(&data).unwrap_or_default();
+        if let Some(str_data) = map.get("data") {
+            let result:QueryListResult=serde_json::from_str(str_data)?;
+            let ref_time  = result.lastRefTime.clone().unwrap_or_default();
+            let key = result.name.clone().unwrap_or_default();
+            //send to client
+            let mut map = HashMap::new();
+            map.insert("type", "push-ack".to_owned());
+            map.insert("lastRefTime",ref_time.to_string());
+            map.insert("data","".to_owned());
+            let ack = serde_json::to_string(&map).unwrap();
+            let send_msg = UdpDataCmd{
+                data:ack.as_bytes().to_vec(),
+                target_addr:msg.target_addr,
+            };
+            self.udp_addr.do_send(send_msg);
+            //update
+            self.update_instances_and_notify(key,result);
+        }
         Ok(())
     }
 }
@@ -711,11 +754,21 @@ impl NamingClient {
     }
 
     fn init_register(namespace_id:String,client_ip:String,host:HostInfo) -> (Addr<InnerNamingRegister>,Addr<InnerNamingListener>) {
+        use tokio::net::{UdpSocket};
         let (tx,rx) = std::sync::mpsc::sync_channel(1);
         std::thread::spawn(move || {
             let rt = System::new();
             let addrs = rt.block_on(async {
-                (InnerNamingRegister::new(host.clone()).start(),InnerNamingListener::new(&namespace_id,&client_ip, host.clone()).start() )
+                let socket=UdpSocket::bind("0.0.0.0:0").await.unwrap();
+                let port = socket.local_addr().unwrap().port();
+                let new_host=host.clone();
+                let listener_addr=InnerNamingListener::create(move |ctx| {
+                    let udp_addr = UdpWorker::new_with_socket(socket, ctx.address()).start();
+                    InnerNamingListener::new(&namespace_id,&client_ip,port, new_host,udp_addr) 
+                });
+                (InnerNamingRegister::new(host.clone()).start(),
+                    listener_addr
+                )
             });
             tx.send(addrs);
             rt.run();

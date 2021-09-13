@@ -51,7 +51,7 @@ pub struct InstanceWebQueryListParams {
     pub clusters:String,
     pub healthyOnly:bool,
     pub clientIP:Option<String>,
-    pub udpPort:Option<u32>,
+    pub udpPort:Option<u16>,
 }
 
 #[derive(Debug,Serialize,Deserialize,Default,Clone)]
