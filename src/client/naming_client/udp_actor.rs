@@ -67,12 +67,13 @@ impl UdpWorker {
                     loop{
                         match socket.recv_from(&mut buf).await{
                             Ok((len,addr)) => {
-                                let mut data:Vec<u8> = Vec::with_capacity(len);
+                                //let mut data:Vec<u8> = Vec::with_capacity(len);
+                                let mut data:Vec<u8> = vec![0u8;len];
                                 data.clone_from_slice(&buf[..len]);
                                 let msg = UdpDataCmd{data:data,target_addr:addr};
-                                notify_addr.do_send(msg);
                                 //let s=String::from_utf8_lossy(&buf[..len]);
                                 //println!("rece from:{} | len:{} | str:{}",&addr,len,s);
+                                notify_addr.do_send(msg);
 
                             },
                             _ => {}

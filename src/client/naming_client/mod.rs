@@ -217,7 +217,7 @@ impl InnerNamingRegister {
     fn remove_instance(&self,instance:Instance,ctx:&mut actix::Context<Self>){
         let client = self.request_client.clone();
         async move {
-            client.remove(&instance).await.unwrap();
+            client.remove(&instance).await;
             instance
         }.into_actor(self)
         .map(|_,_,ctx|{}).spawn(ctx);
@@ -233,7 +233,7 @@ impl InnerNamingRegister {
         /*
         async move {
             for (_,instance) in instances.iter() {
-                client.remove(&instance).await.unwrap();
+                client.remove(&instance).await;
             }
             ()
         }.into_actor(self)
@@ -288,7 +288,7 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                 self.timeout_set.add(time+self.period,key.clone());
                 let client = self.request_client.clone();
                 async move {
-                    client.register(&instance).await.unwrap();
+                    client.register(&instance).await;
                     instance
                 }.into_actor(self)
                 .map(|instance,act,_|{
@@ -311,7 +311,7 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                     if let Some(beat_string) = &instance.beat_string {
                         let beat_string = beat_string.clone();
                         async move {
-                            client.heartbeat(beat_string).await.unwrap();
+                            client.heartbeat(beat_string).await;
                         }.into_actor(self)
                         .map(|_,_,_|{}).spawn(ctx);
                     }
