@@ -67,24 +67,5 @@ impl Client {
             tenant: None,
         }
     }
-
-    pub async fn get_config(&self,data_id:&str,group:&str) -> anyhow::Result<String> {
-        let mut param :HashMap<&str,&str> = HashMap::new();
-        param.insert("dataId",data_id);
-        param.insert("group",group);
-        if let Some(t) = &self.tenant {
-            param.insert("tenant",&t);
-        }
-        let url = format!("http://{}/nacos/v1/cs/configs?{}",self.server_addr,serde_urlencoded::to_string(&param).unwrap());
-        let res = reqwest::get(&url).await?;
-        /* 
-        if res.status().as_u16() != 200u16{
-        }
-        */
-        let text = res.text().await?;
-        //let c1 = String::from_utf8(vec![1u8]).unwrap();
-        //let c1 = String::from_utf8(vec![2u8]).unwrap();
-        Ok(text)
-    }
 }
 

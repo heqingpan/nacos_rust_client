@@ -1,9 +1,11 @@
 
-use std::collections::HashSet;
+use crate::client::utils::Utils;
 use std::sync::Arc;
 use std::{collections::HashMap,time::Duration};
 use anyhow::anyhow;
 
+use hyper::Client;
+use hyper::client::HttpConnector;
 use tokio::sync::RwLock;
 
 use super::HostInfo;
@@ -141,12 +143,22 @@ pub struct ConfigClient{
 #[derive(Debug,Clone)]
 pub struct ConfigInnerRequestClient{
     host:HostInfo,
+    client: Client<HttpConnector>,
+    headers:HashMap<String,String>,
 }
 
 impl ConfigInnerRequestClient {
     pub fn new(host:HostInfo) -> Self {
+        let client = Client::builder()
+        .http1_title_case_headers(true)
+        .http1_preserve_header_case(true)
+        .build_http();
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_owned(), "application/x-www-form-urlencoded".to_owned());
         Self{
             host,
+            client,
+            headers,
         }
     }
 
@@ -158,11 +170,12 @@ impl ConfigInnerRequestClient {
             param.insert("tenant",&key.tenant);
         }
         let url = format!("http://{}:{}/nacos/v1/cs/configs?{}",self.host.ip,self.host.port,serde_urlencoded::to_string(&param).unwrap());
-        let res = reqwest::get(&url).await?;
-        if res.status().as_u16() != 200u16 {
+        let resp=Utils::request(&self.client, "GET", &url, vec![], Some(&self.headers), Some(3000)).await?;
+        if !resp.status_is_200() {
             return Err(anyhow!("get config error"));
         }
-        let text = res.text().await?;
+        let text = resp.get_string_body();
+        //println!("get_config:{}",&text);
         Ok(text)
     }
 
@@ -175,16 +188,11 @@ impl ConfigInnerRequestClient {
         }
         param.insert("content",value);
         let url = format!("http://{}:{}/nacos/v1/cs/configs",self.host.ip,self.host.port);
-        let client = reqwest::Client::builder().connect_timeout(Duration::from_millis(1000))
-            .timeout(Duration::from_secs(3000))
-            .build().unwrap();
+
         let body = serde_urlencoded::to_string(&param).unwrap();
-        let res = client.post(&url)
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(body).send().await?;
-        let status = res.status().as_u16();
-        if status != 200u16 {
-            println!("{:?}",&res);
+        let resp=Utils::request(&self.client, "POST", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
+        if !resp.status_is_200() {
+            println!("{}",resp.get_lossy_string_body());
             return Err(anyhow!("set config error"));
         }
         Ok(())
@@ -198,16 +206,10 @@ impl ConfigInnerRequestClient {
             param.insert("tenant",&key.tenant);
         }
         let url = format!("http://{}:{}/nacos/v1/cs/configs",self.host.ip,self.host.port);
-        let client = reqwest::Client::builder().connect_timeout(Duration::from_millis(1000))
-            .timeout(Duration::from_secs(3000))
-            .build().unwrap();
         let body = serde_urlencoded::to_string(&param).unwrap();
-        let res = client.delete(&url)
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(body).send().await?;
-        let status = res.status().as_u16();
-        if status != 200u16 {
-            println!("{:?}",&res);
+        let resp=Utils::request(&self.client, "DELETE", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
+        if !resp.status_is_200() {
+            println!("{}",resp.get_lossy_string_body());
             return Err(anyhow!("del config error"));
         }
         Ok(())
@@ -219,20 +221,15 @@ impl ConfigInnerRequestClient {
         let timeout_str = timeout.to_string();
         param.insert("Listening-Configs", content);
         let url = format!("http://{}:{}/nacos/v1/cs/configs/listener",self.host.ip,self.host.port);
-        let client = reqwest::Client::builder().connect_timeout(Duration::from_millis(1000))
-            .timeout(Duration::from_secs(timeout+1000))
-            .build().unwrap();
         let body = serde_urlencoded::to_string(&param).unwrap();
-        let res = client.post(&url)
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .header("Long-Pulling-Timeout", &timeout_str)
-            .body(body.to_owned()).send().await?;
-        let status = res.status().as_u16();
-        if status != 200u16 {
-            println!("{},{},{:?}",&url,&body,&res);
+        let mut headers = self.headers.clone();
+        headers.insert("Long-Pulling-Timeout".to_owned(), timeout_str);
+        let resp=Utils::request(&self.client, "POST", &url, body.as_bytes().to_vec(), Some(&headers), Some(timeout+1000)).await?;
+        if !resp.status_is_200() {
+            println!("{},{},{},{}",&url,&body,resp.status,resp.get_lossy_string_body());
             return Err(anyhow!("listener config error"));
         }
-        let text = res.text().await?;
+        let text = resp.get_string_body();
         let t = format!("v={}",&text);
         let map:HashMap<&str,String>=serde_urlencoded::from_str(&t).unwrap();
         let text = map.get("v").unwrap_or(&text);
