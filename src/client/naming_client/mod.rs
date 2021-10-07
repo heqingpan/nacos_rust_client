@@ -46,7 +46,7 @@ impl InnerNamingRequestClient{
         let body = serde_urlencoded::to_string(&params)?;
         let url = format!("http://{}:{}/nacos/v1/ns/instance",&self.host.ip,&self.host.port);
         let resp=Utils::request(&self.client, "POST", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
-        println!("register:{}",resp.get_lossy_string_body());
+        log::info!("register:{}",resp.get_lossy_string_body());
         Ok("ok"==resp.get_string_body())
     }
 
@@ -55,14 +55,14 @@ impl InnerNamingRequestClient{
         let body = serde_urlencoded::to_string(&params)?;
         let url = format!("http://{}:{}/nacos/v1/ns/instance",&self.host.ip,&self.host.port);
         let resp=Utils::request(&self.client, "DELETE", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
-        println!("remove:{}",resp.get_lossy_string_body());
+        log::info!("remove:{}",resp.get_lossy_string_body());
         Ok("ok"==resp.get_string_body())
     }
 
     async fn heartbeat(&self,beat_string:Arc<String>) -> anyhow::Result<bool>{
         let url = format!("http://{}:{}/nacos/v1/ns/instance/beat",&self.host.ip,&self.host.port);
         let resp=Utils::request(&self.client, "PUT", &url, beat_string.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
-        //println!("heartbeat:{}",resp.get_lossy_string_body());
+        log::debug!("heartbeat:{}",resp.get_lossy_string_body());
         return Ok( "ok"==resp.get_string_body());
     }
 
@@ -72,7 +72,7 @@ impl InnerNamingRequestClient{
                 ,&serde_urlencoded::to_string(&params)?);
         let resp=Utils::request(&self.client, "GET", &url, vec![], Some(&self.headers), Some(3000)).await?;
         let result:QueryListResult=serde_json::from_slice(&resp.body)?;
-        println!("get_instance_list instance:{}",&result.hosts.is_some());
+        log::debug!("get_instance_list instance:{}",&result.hosts.is_some());
         return Ok( result);
     }
 }
@@ -249,12 +249,12 @@ impl Actor for InnerNamingRegister {
     type Context = Context<Self>;
 
     fn started(&mut self,ctx: &mut Self::Context) {
-        println!(" InnerNamingRegister started");
+        log::info!(" InnerNamingRegister started");
         self.hb(ctx);
     }
 
     fn stopping(&mut self,ctx: &mut Self::Context) -> Running {
-        println!(" InnerNamingRegister stopping ");
+        log::info!(" InnerNamingRegister stopping ");
         if self.stop_remove_all {
             return Running::Stop;
         }
@@ -469,7 +469,7 @@ impl InnerNamingListener {
                     act.update_instances_and_notify(key, result);
                     },
                     Err(e) =>{
-                        println!("get_instance_list error:{}",e);
+                        log::error!("get_instance_list error:{}",e);
                     },
                 };
             })
@@ -559,7 +559,7 @@ impl Actor for InnerNamingListener {
     type Context = Context<Self>;
 
     fn started(&mut self,ctx: &mut Self::Context) {
-        println!(" InnerNamingListener started");
+        log::info!(" InnerNamingListener started");
         self.hb(ctx);
     }
 }
@@ -787,7 +787,7 @@ pub struct NamingClient{
 impl Drop for NamingClient {
 
     fn drop(&mut self) { 
-        println!("NamingClient droping");
+        log::info!("NamingClient droping");
         self.register.do_send(NamingRegisterCmd::Close());
         std::thread::sleep(utils::ms(500));
     }

@@ -9,6 +9,8 @@ use nacos_rust_client::client::{HostInfo, naming_client::{NamingClient, Instance
 
 #[tokio::main]
 async fn main(){
+    std::env::set_var("RUST_LOG","INFO");
+    env_logger::init();
     let host = HostInfo::parse("127.0.0.1:8848");
     let client = NamingClient::new(host,"".to_owned());
 

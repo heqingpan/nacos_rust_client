@@ -12,6 +12,8 @@ use nacos_rust_client::client::config_client::{
 
 #[tokio::main]
 async fn main() {
+    std::env::set_var("RUST_LOG","INFO");
+    env_logger::init();
     println!("--------");
     println!("Hello, world!");
     test01().await;

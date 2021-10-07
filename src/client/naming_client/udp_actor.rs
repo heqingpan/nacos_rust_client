@@ -88,7 +88,7 @@ impl Actor for UdpWorker {
     type Context = Context<Self>;
 
     fn started(&mut self,ctx: &mut Self::Context) {
-        println!(" UdpWorker started");
+        log::info!(" UdpWorker started");
         self.init(ctx);
     }
 }

@@ -175,7 +175,7 @@ impl ConfigInnerRequestClient {
             return Err(anyhow!("get config error"));
         }
         let text = resp.get_string_body();
-        //println!("get_config:{}",&text);
+        log::debug!("get_config:{}",&text);
         Ok(text)
     }
 
@@ -192,7 +192,7 @@ impl ConfigInnerRequestClient {
         let body = serde_urlencoded::to_string(&param).unwrap();
         let resp=Utils::request(&self.client, "POST", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
         if !resp.status_is_200() {
-            println!("{}",resp.get_lossy_string_body());
+            log::error!("{}",resp.get_lossy_string_body());
             return Err(anyhow!("set config error"));
         }
         Ok(())
@@ -209,7 +209,7 @@ impl ConfigInnerRequestClient {
         let body = serde_urlencoded::to_string(&param).unwrap();
         let resp=Utils::request(&self.client, "DELETE", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
         if !resp.status_is_200() {
-            println!("{}",resp.get_lossy_string_body());
+            log::error!("{}",resp.get_lossy_string_body());
             return Err(anyhow!("del config error"));
         }
         Ok(())
@@ -226,7 +226,7 @@ impl ConfigInnerRequestClient {
         headers.insert("Long-Pulling-Timeout".to_owned(), timeout_str);
         let resp=Utils::request(&self.client, "POST", &url, body.as_bytes().to_vec(), Some(&headers), Some(timeout+1000)).await?;
         if !resp.status_is_200() {
-            println!("{},{},{},{}",&url,&body,resp.status,resp.get_lossy_string_body());
+            log::error!("{},{},{},{}",&url,&body,resp.status,resp.get_lossy_string_body());
             return Err(anyhow!("listener config error"));
         }
         let text = resp.get_string_body();
@@ -282,7 +282,7 @@ impl <T> ConfigListener for ConfigDefaultListener<T> {
     }
 
     fn change(&self,key:&ConfigKey,value:&str) -> () {
-        println!("ConfigDefaultListener change:{:?},{}",key,value);
+        log::info!("ConfigDefaultListener change:{:?},{}",key,value);
         let content = self.content.clone();
         let  convert = self.convert.as_ref();
         if let Some(value) = convert(value){
