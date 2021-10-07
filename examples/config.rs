@@ -62,8 +62,8 @@ async fn test01(){
     config_client.subscribe(c).await;
 
     let key = ConfigKey::new("003","foo","");
-    let c = Box::new(ConfigDefaultListener::new(key.clone(),Arc::new(func2)));
-    let d = c.clone();
+    let c = Box::new(ConfigDefaultListener::new(key.clone(),Arc::new(|s|{Some(s.to_owned())})));
     config_client.set_config(&key,"1234").await.unwrap();
-    config_client.subscribe(d).await;
+    config_client.subscribe(c.clone()).await;
+    println!("003 value:{:?}",c.get_value());
 }

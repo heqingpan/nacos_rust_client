@@ -18,6 +18,7 @@ async fn main(){
     for i in 0..10{
         let port=10000+i;
         let instance = Instance::new(&ip,port,"foo","","","",None);
+        //注册
         client.register(instance);
     }
 
@@ -37,7 +38,9 @@ async fn main(){
 
 async fn query_params(client:Arc<NamingClient>) -> anyhow::Result<()>{
     let params = QueryInstanceListParams::new("","","foo",None,true);
+    // 模拟每秒钟获取一次实例
     loop{
+        //查询并按权重随机选择其中一个实例
         match client.select_instance(params.clone()).await{
             Ok(instances) =>{
                 println!("select instance {}:{}",&instances.ip,&instances.port);
