@@ -182,6 +182,9 @@ impl NamingUtils {
             sum+= *v;
             superposition_list.push(sum);
         }
+        if sum==0 {
+            return 0;
+        }
         //let rng = rand::thread_rng();
         let mut rng: StdRng = StdRng::from_entropy();
         let range_uniform=Uniform::new(0,sum);

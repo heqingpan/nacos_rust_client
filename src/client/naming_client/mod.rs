@@ -530,9 +530,10 @@ impl InnerNamingListener {
                 }
                 list.push(item.clone());
             }
-            if list.len()> 0 {
-                return Some(list);
-            }
+            return Some(list);
+            //if list.len()> 0 {
+            //    return Some(list);
+            //}
         }
         else{
             let current_time = now_millis();
@@ -683,11 +684,14 @@ impl Handler<UdpDataCmd> for InnerNamingListener {
     }
 }
 
+type ListenerSenderType = tokio::sync::oneshot::Sender<NamingQueryResult>;
+type ListenerReceiverType = tokio::sync::oneshot::Receiver<NamingQueryResult>;
+
 #[derive(Message)]
 #[rtype(result = "Result<NamingQueryResult,std::io::Error>")]
 pub enum NamingQueryCmd{
-    QueryList(QueryInstanceListParams),
-    Select(QueryInstanceListParams),
+    QueryList(QueryInstanceListParams,ListenerSenderType),
+    Select(QueryInstanceListParams,ListenerSenderType),
 }
 
 pub enum NamingQueryResult {
@@ -700,17 +704,71 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
     type Result = Result<NamingQueryResult,std::io::Error>;
     fn handle(&mut self,msg:NamingQueryCmd,ctx:&mut Context<Self>) -> Self::Result  {
         match msg {
-            NamingQueryCmd::QueryList(param) => {
+            NamingQueryCmd::QueryList(param,sender) => {
                 if let Some(list) = self.filter_instances(&param,ctx) {
-                    return Ok(NamingQueryResult::List(list));
+                    sender.send(NamingQueryResult::List(list));
+                }
+                else{
+                    let request_client = self.request_client.clone();
+                    async move {
+                        (request_client.get_instance_list(&param).await,sender)
+                    }
+                    .into_actor(self)
+                    .map(|(res,sender),_,_|{
+                        match res {
+                            Ok(list_result) => {
+                                if let Some(hosts) = list_result.hosts {
+                                    let list:Vec<Arc<Instance>> = hosts.into_iter()
+                                        .map(|e| Arc::new(e.to_instance()))
+                                        .filter(|e|e.weight>0.001f32)
+                                        .collect();
+                                    sender.send(NamingQueryResult::List(list));
+                                    return;
+                                }
+                            },
+                            Err(_) => {},
+                        }
+                        sender.send(NamingQueryResult::None);
+                    })
+                    .spawn(ctx);
                 }
             },
-            NamingQueryCmd::Select(param) => {
+            NamingQueryCmd::Select(param,sender) => {
                 if let Some(list) = self.filter_instances(&param,ctx) {
                     let index = NamingUtils::select_by_weight_fn(&list, |e| (e.weight*1000f32) as u64); 
                     if let Some(e) = list.get(index) {
-                        return Ok(NamingQueryResult::One(e.clone()));
+                        sender.send(NamingQueryResult::One(e.clone()));
                     }
+                    else{
+                        sender.send(NamingQueryResult::None);
+                    }
+                }
+                else{
+                    let request_client = self.request_client.clone();
+                    async move {
+                        (request_client.get_instance_list(&param).await,sender)
+                    }
+                    .into_actor(self)
+                    .map(|(res,sender),_,_|{
+                        match res {
+                            Ok(list_result) => {
+                                if let Some(hosts) = list_result.hosts {
+                                    let list:Vec<Arc<Instance>> = hosts.into_iter()
+                                        .map(|e| Arc::new(e.to_instance()))
+                                        .filter(|e|e.weight>0.001f32)
+                                        .collect();
+                                    let index = NamingUtils::select_by_weight_fn(&list, |e| (e.weight*1000f32) as u64); 
+                                    if let Some(e) = list.get(index) {
+                                        sender.send(NamingQueryResult::One(e.clone()));
+                                    }
+                                    return;
+                                }
+                            },
+                            Err(_) => {},
+                        }
+                        sender.send(NamingQueryResult::None);
+                    })
+                    .spawn(ctx); 
                 }
             },
         }
@@ -786,23 +844,27 @@ impl NamingClient {
     }
 
     pub async fn query_instances(&self,params:QueryInstanceListParams) -> anyhow::Result<Vec<Arc<Instance>>>{
-        match self.listener_addr.send(NamingQueryCmd::QueryList(params)).await?? {
+        let (tx,rx) = tokio::sync::oneshot::channel();
+        self.listener_addr.do_send(NamingQueryCmd::QueryList(params,tx));
+        match rx.await? {
             NamingQueryResult::List(list) => {
                 Ok(list)
             },
             _ => {
-                Err(anyhow::anyhow!("now find instance"))
+                Err(anyhow::anyhow!("not found instance"))
             }
         }
     }
 
     pub async fn select_instance(&self,params:QueryInstanceListParams) -> anyhow::Result<Arc<Instance>>{
-        match self.listener_addr.send(NamingQueryCmd::Select(params)).await?? {
+        let (tx,rx) = tokio::sync::oneshot::channel();
+        self.listener_addr.do_send(NamingQueryCmd::Select(params,tx));
+        match rx.await? {
             NamingQueryResult::One(one) => {
                 Ok(one)
             },
             _ => {
-                Err(anyhow::anyhow!("not find instance"))
+                Err(anyhow::anyhow!("not found instance"))
             }
         }
     }
