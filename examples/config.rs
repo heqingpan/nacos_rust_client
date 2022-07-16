@@ -1,6 +1,4 @@
-use std::cell::Cell;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
+use std::time::Duration;
 use std::sync::Arc;
 
 use nacos_rust_client::client::{
@@ -9,62 +7,58 @@ use nacos_rust_client::client::{
 use nacos_rust_client::client::config_client::{
     ConfigClient,ConfigKey,ConfigListener,ConfigDefaultListener
 };
+use serde::{Serialize,Deserialize};
+use serde_json;
+
+#[derive(Debug,Serialize,Deserialize,Default,Clone)]
+pub struct Foo {
+    pub name: String,
+    pub number: u64,
+}
 
 #[tokio::main]
 async fn main() {
-    std::env::set_var("RUST_LOG","INFO");
-    env_logger::init();
-    println!("--------");
-    println!("Hello, world!");
-    println!("Hello, world!");
-    test01().await;
-    tokio::signal::ctrl_c().await.expect("failed to listen for event");
-
-}
-
-struct L01;
-
-impl ConfigListener for L01 {
-    fn get_key(&self) -> ConfigKey {
-        ConfigKey::new("001","foo","")
-    }
-    fn change(&self,key:&ConfigKey,content:&str) -> () {
-        println!("{:?},{}",&key,content);
-        ()
-    }
-}
-
-fn func1(key:&ConfigKey,content:&str){
-    println!("event:{:?},{}",key,content);
-}
-
-fn func2(s:&str) -> Option<String> {
-    Some(s.to_owned())
-}
-
-async fn test01(){
     let host = HostInfo::parse("127.0.0.1:8848");
     let mut config_client = ConfigClient::new(host,String::new());
-    let key = config_client.gene_config_key("001", "foo");
+    let key = ConfigKey::new("001","foo","");
+    //设置
     config_client.set_config(&key, "1234").await.unwrap();
+    //获取
     let v=config_client.get_config(&key).await.unwrap();
     println!("{:?},{}",&key,v);
-    //config_client.del_config(&key).await.unwrap();
-    let v=config_client.get_config(&key).await;
-    println!("{:?},{:?}",&key,v);
-    //let v = config_client.listene(&key,1000u64).await;
-    let a = Box::new(L01);
-    let listened = Box::new(func1);
-    config_client.subscribe(a).await;
 
-    let key = ConfigKey::new("002","foo","");
-    let c = Box::new(ConfigDefaultListener::new(key.clone(),Arc::new(func2)));
-    config_client.set_config(&key,"1234").await.unwrap();
-    config_client.subscribe(c).await;
+    let mut foo_obj= Foo {
+        name:"foo name".to_owned(),
+        number:0u64,
+    };
+    let key = ConfigKey::new("foo_config","foo","");
+    let foo_config_obj_listener = Box::new(ConfigDefaultListener::new(key.clone(),Arc::new(|s|{
+        //字符串反序列化为对象，如:serde_json::from_str::<T>(s)
+        Some(serde_json::from_str::<Foo>(s).unwrap())
+    })));
+    let foo_config_string_listener = Box::new(ConfigDefaultListener::new(key.clone(),Arc::new(|s|{
+        //字符串反序列化为对象，如:serde_json::from_str::<T>(s)
+        Some(s.to_owned())
+    })));
+    config_client.set_config(&key,&serde_json::to_string(&foo_obj).unwrap()).await.unwrap();
+    //监听
+    config_client.subscribe(foo_config_obj_listener.clone()).await;
+    config_client.subscribe(foo_config_string_listener.clone()).await;
+    //从监听对象中获取
+    println!("key:{:?} ,value:{:?}",&key.data_id,foo_config_string_listener.get_value());
+    for i in 1..10 {
+        foo_obj.number=i;
+        let foo_json_string = serde_json::to_string(&foo_obj).unwrap();
+        config_client.set_config(&key,&foo_json_string).await.unwrap();
+        // 配置推送到服务端后， 监听更新需要一点时间
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        let foo_obj_from_listener = foo_config_obj_listener.get_value().unwrap();
+        let foo_obj_string_from_listener = foo_config_string_listener.get_value().unwrap();
+        // 监听项的内容有变更后会被服务端推送,监听项会自动更新为最新的配置
+        println!("foo_obj_from_listener :{}",&foo_obj_string_from_listener);
+        assert_eq!(foo_obj_string_from_listener.to_string(),foo_json_string);
+        assert_eq!(foo_obj_from_listener.number,foo_obj.number);
+        assert_eq!(foo_obj_from_listener.number,i);
+    }
 
-    let key = ConfigKey::new("003","foo","");
-    let c = Box::new(ConfigDefaultListener::new(key.clone(),Arc::new(|s|{Some(s.to_owned())})));
-    config_client.set_config(&key,"1234").await.unwrap();
-    config_client.subscribe(c.clone()).await;
-    println!("003 value:{:?}",c.get_value());
 }
