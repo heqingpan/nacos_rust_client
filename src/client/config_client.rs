@@ -4,8 +4,6 @@ use std::sync::Arc;
 use std::{collections::HashMap,time::Duration};
 use anyhow::anyhow;
 
-use hyper::Client;
-use hyper::client::HttpConnector;
 use tokio::sync::RwLock;
 
 use super::HostInfo;
@@ -143,18 +141,22 @@ pub struct ConfigClient{
 #[derive(Debug,Clone)]
 pub struct ConfigInnerRequestClient{
     host:HostInfo,
-    client: Client<HttpConnector>,
+    client: reqwest::Client,
     headers:HashMap<String,String>,
 }
 
 impl ConfigInnerRequestClient {
     pub fn new(host:HostInfo) -> Self {
+        /* 
         let client = Client::builder()
         .http1_title_case_headers(true)
         .http1_preserve_header_case(true)
         .build_http();
+        */
         let mut headers = HashMap::new();
         headers.insert("Content-Type".to_owned(), "application/x-www-form-urlencoded".to_owned());
+        let client = reqwest::Client::builder()
+            .build().unwrap();
         Self{
             host,
             client,

@@ -3,7 +3,6 @@ use std::{sync::Arc, thread::Thread};
 use std::time::Duration;
 use std::env;
 use actix::prelude::*;
-use hyper::{Body, Client, Request, Response, body::Buf, client::HttpConnector,Method};
 use std::collections::HashMap;
 use inner_mem_cache::TimeoutSet;
 use super::now_millis;
@@ -21,17 +20,21 @@ static REGISTER_PERIOD :u64 = 5000u64;
 #[derive(Debug,Clone)]
 struct InnerNamingRequestClient{
     host:HostInfo,
-    client: Client<HttpConnector>,
+    client: reqwest::Client,
     headers:HashMap<String,String>,
 }
 
 impl InnerNamingRequestClient{
 
     fn new(host:HostInfo) -> Self{
+        /* 
         let client = Client::builder()
         .http1_title_case_headers(true)
         .http1_preserve_header_case(true)
         .build_http();
+        */
+        let client = reqwest::Client::builder()
+            .build().unwrap();
         let mut headers = HashMap::new();
         headers.insert("Content-Type".to_owned(), "application/x-www-form-urlencoded".to_owned());
         Self{
@@ -71,9 +74,18 @@ impl InnerNamingRequestClient{
         let url = format!("http://{}:{}/nacos/v1/ns/instance/list?{}",&self.host.ip,&self.host.port
                 ,&serde_urlencoded::to_string(&params)?);
         let resp=Utils::request(&self.client, "GET", &url, vec![], Some(&self.headers), Some(3000)).await?;
-        let result:QueryListResult=serde_json::from_slice(&resp.body)?;
-        log::debug!("get_instance_list instance:{}",&result.hosts.is_some());
-        return Ok( result);
+        
+        let result:Result<QueryListResult,_>=serde_json::from_slice(&resp.body);
+        match result {
+            Ok(r) => {
+                log::debug!("get_instance_list instance:{}",&r.hosts.is_some());
+                return Ok( r)
+            },
+            Err(e) => {
+                log::error!("get_instance_list error:\n\turl:{}\n\t{}",&url,resp.get_string_body());
+                return Err(anyhow::format_err!(e))
+            }
+        }
     }
 }
 

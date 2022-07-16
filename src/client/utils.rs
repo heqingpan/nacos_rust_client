@@ -3,7 +3,6 @@ use std::io::Read;
 use std::time::Duration;
 use std::{collections::HashMap, str::FromStr};
 
-use hyper::{Body, Client, Request, Response, body::Buf, client::HttpConnector, header::HeaderName};
 
 pub fn ms(millis:u64) -> Duration {
     Duration::from_millis(millis)
@@ -47,15 +46,14 @@ impl ResponseWrap {
 
 impl Utils {
 
-    async fn get_response_wrap(resp:Response<Body>) -> anyhow::Result<ResponseWrap> {
+    async fn get_response_wrap(resp:reqwest::Response) -> anyhow::Result<ResponseWrap> {
         let status = resp.status().as_u16();
         let mut resp_headers = vec![];
         for (k,v) in resp.headers(){
             let value = String::from_utf8(v.as_bytes().to_vec())?;
             resp_headers.push((k.as_str().to_owned(),value));
         }
-        let body=hyper::body::aggregate(resp).await?;
-        let body= body.chunk().to_vec();
+        let body = resp.bytes().await?.to_vec();
         Ok(ResponseWrap{
             status,
             headers:resp_headers,
@@ -63,30 +61,28 @@ impl Utils {
         })
     }
 
-    pub async fn request(client:&Client<HttpConnector>,method_name:&str,url:&str,body:Vec<u8>,headers:Option<&HashMap<String,String>>,timeout_millis:Option<u64>) -> anyhow::Result<ResponseWrap> {
-        let mut req = Request::new(Body::from(body));
-        *req.uri_mut() = url.parse()?;
-        *req.method_mut() = method_name.parse()?;
+    pub async fn request(client:&reqwest::Client,method_name:&str,url:&str,body:Vec<u8>,headers:Option<&HashMap<String,String>>,timeout_millis:Option<u64>) -> anyhow::Result<ResponseWrap> {
+        let mut req_builer= 
+        match method_name{
+            "GET" => client.get(url),
+            "POST" => client.post(url),
+            "PUT" => client.put(url),
+            "DELETE" => client.delete(url),
+            _ => client.post(url),
+        };
         if let Some(headers) = headers {
-            for (key,val) in headers.iter() {
-                let a = val as &str;
-                req.headers_mut().insert(HeaderName::from_str(key)?, a.parse()?);
+            for (k,v) in headers.iter() {
+                req_builer = req_builer.header(&k as &str,v.to_string());
             }
         }
-        if let Some(timeout_millis) = timeout_millis {
-            tokio::select! {
-                Ok(resp)= client.request(req) => {
-                    Self::get_response_wrap(resp).await
-                },
-                _ = tokio::time::sleep(ms(timeout_millis)) => {
-                    Err(anyhow::anyhow!("request time out {}",&timeout_millis))
-                },
-            }
+        if let Some(timeout)  = timeout_millis {
+            req_builer = req_builer.timeout(Duration::from_millis(timeout));
         }
-        else{
-            let resp=client.request(req).await?;
-            Self::get_response_wrap(resp).await
+        if body.len() > 0 {
+            req_builer=req_builer.body(body);
         }
+        let res = req_builer.send().await?;
+        Self::get_response_wrap(res).await
     }
 
     pub fn gz_encode(data:&[u8],threshold:usize) -> Vec<u8> {

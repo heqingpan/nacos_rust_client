@@ -16,6 +16,7 @@ async fn main() {
     env_logger::init();
     println!("--------");
     println!("Hello, world!");
+    println!("Hello, world!");
     test01().await;
     tokio::signal::ctrl_c().await.expect("failed to listen for event");
 
