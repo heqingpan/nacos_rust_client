@@ -6,8 +6,6 @@ use anyhow::anyhow;
 use actix::prelude::*;
 use super::now_millis;
 
-use tokio::sync::RwLock;
-
 use super::{HostInfo,ServerEndpointInfo, TokenInfo};
 use super::get_md5;
 
@@ -135,8 +133,6 @@ pub struct ConfigClient{
     host:HostInfo,
     tenant:String,
     request_client:ConfigInnerRequestClient,
-    subscribe_sender:ConfigInnerMsgSenderType,
-    subscribe_context:RwLock<HashMap<ConfigKey,String>>,
     config_inner_addr: Addr<ConfigInnerActor> ,
 }
 
@@ -313,15 +309,11 @@ impl <T> ConfigListener for ConfigDefaultListener<T> {
 impl ConfigClient {
     pub fn new(host:HostInfo,tenant:String) -> Self {
         let request_client = ConfigInnerRequestClient::new(host.clone());
-        let (tx,rx) = tokio::sync::mpsc::channel::<ConfigInnerMsg>(100);
         let config_inner_addr = Self::init_register(request_client.clone());
-        ConfigInnerSubscribeClient::new(request_client.clone(),rx).spawn();
         Self{
             host,
             tenant,
             request_client,
-            subscribe_sender:tx,
-            subscribe_context: Default::default(),
             config_inner_addr
         }
     }
@@ -388,15 +380,6 @@ impl ConfigClient {
         Ok(())
     }
 }
-enum ConfigInnerMsg {
-    SUBSCRIBE(ConfigKey,u64,String,Box<ConfigListener + Send + 'static>),
-    REMOVE(ConfigKey,u64),
-}
-
-type ConfigInnerMsgSenderType = tokio::sync::mpsc::Sender<ConfigInnerMsg>;
-type ConfigInnerMsgReceiverType = tokio::sync::mpsc::Receiver<ConfigInnerMsg>;
-
-//unsafe impl Send for ConfigInnerMsg {}
 
 struct ListenerValue {
     md5:String,
@@ -670,135 +653,5 @@ impl Handler<ConfigInnerCmd> for ConfigInnerActor {
                 Ok(ConfigInnerHandleResult::None)
             },
         }
-    }
-}
-
-
-
-pub struct ConfigInnerSubscribeClient{
-    request_client:ConfigInnerRequestClient,
-    rt:ConfigInnerMsgReceiverType,
-}
-
-impl ConfigInnerSubscribeClient {
-
-    fn new(request_client:ConfigInnerRequestClient,rt:ConfigInnerMsgReceiverType) -> Self {
-        Self {
-            request_client,
-            rt,
-        }
-    }
-
-    fn spawn(self) {
-        tokio::spawn(async move {
-            self.recv().await;
-        });
-    }
-
-    async fn recv(self) {
-        let mut rt = self.rt;
-        //let request_client = self.request_client.clone();
-        let mut subscribe_map:HashMap<ConfigKey,ListenerValue>=Default::default();
-        loop {
-            let mut has_msg=false;
-            tokio::select! {
-                Some(msg) = rt.recv() => {
-                    subscribe_map=Self::take_msg(msg, subscribe_map);
-                    has_msg=true;
-                },
-                _ = tokio::time::sleep(ms(1)) => {},
-            }
-            if has_msg {
-                continue;
-            }
-            subscribe_map = Self::do_once_listener(&self.request_client,subscribe_map).await;
-            tokio::time::sleep(ms(5)).await;
-        }
-    }
-
-    fn take_msg(msg:ConfigInnerMsg,mut subscribe_map:HashMap<ConfigKey,ListenerValue>) -> HashMap<ConfigKey,ListenerValue> {
-        match msg {
-            ConfigInnerMsg::SUBSCRIBE(key,id,md5, func) => {
-                let list=subscribe_map.get_mut(&key);
-                match list {
-                    Some(v) => {
-                        v.push(id,func);
-                        if md5.len()> 0 {
-                            v.md5 = md5;
-                        }
-                    },
-                    None => {
-                        let v = ListenerValue::new(vec![(id,func)],md5);
-                        subscribe_map.insert(key, v);
-                    },
-                };
-            },
-            ConfigInnerMsg::REMOVE(key, id) => {
-                let list=subscribe_map.get_mut(&key);
-                match list {
-                    Some(v) => {
-                        let size=v.remove(id);
-                        if size == 0 {
-                            subscribe_map.remove(&key);
-                        }
-                    },
-                    None => {},
-                };
-
-            },
-        };
-        subscribe_map
-    }
-
-    async fn do_once_listener(request_client:&ConfigInnerRequestClient,subscribe_map:HashMap<ConfigKey,ListenerValue>) -> HashMap<ConfigKey,ListenerValue> {
-        let (content,mut subscribe_map) = Self::get_listener_body(subscribe_map);
-        //println!("do_once_listener,{:?}",content);
-        match content{
-            Some(content) => {
-                match request_client.listene(&content, None).await {
-                    Ok(items) => {
-                        for key in items {
-                            subscribe_map=Self::do_change_config(request_client,subscribe_map,&key).await;
-                            //let md5_value = "".to_owned();
-                            //Self::update_key_md5(&subscribe_map,&key,md5_value);
-                        }
-                    },
-                    Err(_) => {},
-                };
-            },
-            None => { }
-        };
-        subscribe_map
-    }
-
-    fn get_listener_body(subscribe_map:HashMap<ConfigKey,ListenerValue>) -> (Option<String>,HashMap<ConfigKey,ListenerValue>) {
-        let items=subscribe_map.iter().collect::<Vec<_>>();
-        if items.len()==0 {
-            return (None,subscribe_map);
-        }
-        let mut body=String::new();
-        for (k,v) in items {
-            body+= &format!("{}\x02{}\x02{}\x02{}\x01",k.data_id,k.group,v.md5,k.tenant);
-        }
-        (Some(body),subscribe_map)
-    }
-
-
-    async fn do_change_config(request_client:&ConfigInnerRequestClient,mut subscribe_map:HashMap<ConfigKey,ListenerValue>,key:&ConfigKey) -> HashMap<ConfigKey,ListenerValue> {
-        match request_client.get_config(key).await {
-            Ok(content)  => {
-                let md5 = get_md5(&content);
-                match subscribe_map.get_mut(key) {
-                    Some(v) => {
-                        v.md5 = md5;
-                        v.notify(key, &content);
-                    },
-                    None => {}
-                }
-            },
-            Err(e) => {
-            }
-        };
-        subscribe_map
     }
 }
