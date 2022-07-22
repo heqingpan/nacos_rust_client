@@ -6,7 +6,7 @@ use anyhow::anyhow;
 
 use tokio::sync::RwLock;
 
-use super::HostInfo;
+use super::{HostInfo,ServerEndpointInfo};
 use super::get_md5;
 
 fn ms(millis:u64) -> Duration {
@@ -140,7 +140,8 @@ pub struct ConfigClient{
 
 #[derive(Debug,Clone)]
 pub struct ConfigInnerRequestClient{
-    host:HostInfo,
+    //host:HostInfo,
+    endpoints: ServerEndpointInfo,
     client: reqwest::Client,
     headers:HashMap<String,String>,
 }
@@ -157,8 +158,12 @@ impl ConfigInnerRequestClient {
         headers.insert("Content-Type".to_owned(), "application/x-www-form-urlencoded".to_owned());
         let client = reqwest::Client::builder()
             .build().unwrap();
+        let endpoints = ServerEndpointInfo{
+            hosts: vec![host],
+            auth:None,
+        };
         Self{
-            host,
+            endpoints,
             client,
             headers,
         }
@@ -171,7 +176,8 @@ impl ConfigInnerRequestClient {
         if key.tenant.len() > 0{
             param.insert("tenant",&key.tenant);
         }
-        let url = format!("http://{}:{}/nacos/v1/cs/configs?{}",self.host.ip,self.host.port,serde_urlencoded::to_string(&param).unwrap());
+        let host = self.endpoints.select_host();
+        let url = format!("http://{}:{}/nacos/v1/cs/configs?{}",host.ip,host.port,serde_urlencoded::to_string(&param).unwrap());
         let resp=Utils::request(&self.client, "GET", &url, vec![], Some(&self.headers), Some(3000)).await?;
         if !resp.status_is_200() {
             return Err(anyhow!("get config error"));
@@ -189,7 +195,8 @@ impl ConfigInnerRequestClient {
             param.insert("tenant",&key.tenant);
         }
         param.insert("content",value);
-        let url = format!("http://{}:{}/nacos/v1/cs/configs",self.host.ip,self.host.port);
+        let host = self.endpoints.select_host();
+        let url = format!("http://{}:{}/nacos/v1/cs/configs",host.ip,host.port);
 
         let body = serde_urlencoded::to_string(&param).unwrap();
         let resp=Utils::request(&self.client, "POST", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
@@ -207,7 +214,8 @@ impl ConfigInnerRequestClient {
         if key.tenant.len() > 0{
             param.insert("tenant",&key.tenant);
         }
-        let url = format!("http://{}:{}/nacos/v1/cs/configs",self.host.ip,self.host.port);
+        let host = self.endpoints.select_host();
+        let url = format!("http://{}:{}/nacos/v1/cs/configs",host.ip,host.port);
         let body = serde_urlencoded::to_string(&param).unwrap();
         let resp=Utils::request(&self.client, "DELETE", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
         if !resp.status_is_200() {
@@ -222,7 +230,8 @@ impl ConfigInnerRequestClient {
         let timeout = timeout.unwrap_or(30000u64);
         let timeout_str = timeout.to_string();
         param.insert("Listening-Configs", content);
-        let url = format!("http://{}:{}/nacos/v1/cs/configs/listener",self.host.ip,self.host.port);
+        let host = self.endpoints.select_host();
+        let url = format!("http://{}:{}/nacos/v1/cs/configs/listener",host.ip,host.port);
         let body = serde_urlencoded::to_string(&param).unwrap();
         let mut headers = self.headers.clone();
         headers.insert("Long-Pulling-Timeout".to_owned(), timeout_str);
@@ -333,12 +342,12 @@ impl ConfigClient {
         self.request_client.listene(content, timeout).await
     }
 
-    pub async fn subscribe<T:ConfigListener + Send + 'static>(&mut self,listener:Box<T>) -> anyhow::Result<()> {
+    pub async fn subscribe<T:ConfigListener + Send + 'static>(&self,listener:Box<T>) -> anyhow::Result<()> {
         let key = listener.get_key();
         self.subscribe_with_key(key, listener).await
     }
 
-    pub async fn subscribe_with_key<T:ConfigListener + Send + 'static>(&mut self,key:ConfigKey,listener:Box<T>) -> anyhow::Result<()> {
+    pub async fn subscribe_with_key<T:ConfigListener + Send + 'static>(&self,key:ConfigKey,listener:Box<T>) -> anyhow::Result<()> {
         let id=0u64;
         let md5=match self.get_config(&key).await{
             Ok(text) => {

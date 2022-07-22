@@ -55,6 +55,53 @@ impl HostInfo {
     }
 }
 
+#[derive(Debug,Clone)]
+pub struct AuthInfo {
+    pub username:String,
+    pub password:String,
+}
+
+#[derive(Debug,Clone)]
+pub struct ServerEndpointInfo {
+    pub hosts:Vec<HostInfo>,
+    pub auth:Option<AuthInfo>,
+}
+
+impl ServerEndpointInfo {
+    pub fn new(addrs:&str) -> Self {
+        let addrs=addrs.split(',').collect::<Vec<_>>();
+        let mut hosts = Vec::new();
+        for addr in addrs {
+            hosts.push(HostInfo::parse(&addr));
+        }
+        if hosts.len() == 0 {
+            hosts.push(HostInfo::parse("127.0.0.1:8848"));
+        }
+        Self {
+            hosts:hosts,
+            auth:None,
+        }
+    }
+
+    pub fn new_with_auth(addrs:&str,auth:AuthInfo) -> Self {
+        let addrs=addrs.split(',').collect::<Vec<_>>();
+        let mut hosts = Vec::new();
+        for addr in addrs {
+            hosts.push(HostInfo::parse(&addr));
+        }
+        Self {
+            hosts:hosts,
+            auth:Some(auth),
+        }
+    }
+
+    pub fn select_host(&self) -> &HostInfo{
+        let index=naming_client::NamingUtils::select_by_weight_fn(&self.hosts, |e| 1);
+        self.hosts.get(index).unwrap()
+    }
+
+}
+
 pub struct Client {
     server_addr: String,
     tenant: Option<String>,
