@@ -3,6 +3,7 @@ use crate::client::utils::Utils;
 use std::sync::Arc;
 use std::{collections::HashMap,time::Duration};
 use anyhow::anyhow;
+use actix::prelude::*;
 
 use tokio::sync::RwLock;
 
@@ -373,12 +374,12 @@ type ConfigInnerMsgReceiverType = tokio::sync::mpsc::Receiver<ConfigInnerMsg>;
 
 //unsafe impl Send for ConfigInnerMsg {}
 
-struct ListeneValue {
+struct ListenerValue {
     md5:String,
     listeners:Vec<(u64,Box<ConfigListener + Send>)>,
 }
 
-impl ListeneValue {
+impl ListenerValue {
     fn new(listeners:Vec<(u64,Box<ConfigListener + Send>)>,md5:String) -> Self {
         Self{
             md5,
@@ -416,6 +417,10 @@ impl ListeneValue {
     }
 }
 
+pub struct ConfigInnerActor{
+    pub request_client : ConfigInnerRequestClient,
+    subscribe_map:HashMap<ConfigKey,ListenerValue>,
+}
 
 pub struct ConfigInnerSubscribeClient{
     request_client:ConfigInnerRequestClient,
@@ -440,7 +445,7 @@ impl ConfigInnerSubscribeClient {
     async fn recv(self) {
         let mut rt = self.rt;
         //let request_client = self.request_client.clone();
-        let mut subscribe_map:HashMap<ConfigKey,ListeneValue>=Default::default();
+        let mut subscribe_map:HashMap<ConfigKey,ListenerValue>=Default::default();
         loop {
             let mut has_msg=false;
             tokio::select! {
@@ -458,7 +463,7 @@ impl ConfigInnerSubscribeClient {
         }
     }
 
-    fn take_msg(msg:ConfigInnerMsg,mut subscribe_map:HashMap<ConfigKey,ListeneValue>) -> HashMap<ConfigKey,ListeneValue> {
+    fn take_msg(msg:ConfigInnerMsg,mut subscribe_map:HashMap<ConfigKey,ListenerValue>) -> HashMap<ConfigKey,ListenerValue> {
         match msg {
             ConfigInnerMsg::SUBSCRIBE(key,id,md5, func) => {
                 let list=subscribe_map.get_mut(&key);
@@ -470,7 +475,7 @@ impl ConfigInnerSubscribeClient {
                         }
                     },
                     None => {
-                        let v = ListeneValue::new(vec![(id,func)],md5);
+                        let v = ListenerValue::new(vec![(id,func)],md5);
                         subscribe_map.insert(key, v);
                     },
                 };
@@ -492,7 +497,7 @@ impl ConfigInnerSubscribeClient {
         subscribe_map
     }
 
-    async fn do_once_listener(request_client:&ConfigInnerRequestClient,subscribe_map:HashMap<ConfigKey,ListeneValue>) -> HashMap<ConfigKey,ListeneValue> {
+    async fn do_once_listener(request_client:&ConfigInnerRequestClient,subscribe_map:HashMap<ConfigKey,ListenerValue>) -> HashMap<ConfigKey,ListenerValue> {
         let (content,mut subscribe_map) = Self::get_listener_body(subscribe_map);
         //println!("do_once_listener,{:?}",content);
         match content{
@@ -513,7 +518,7 @@ impl ConfigInnerSubscribeClient {
         subscribe_map
     }
 
-    fn get_listener_body(subscribe_map:HashMap<ConfigKey,ListeneValue>) -> (Option<String>,HashMap<ConfigKey,ListeneValue>) {
+    fn get_listener_body(subscribe_map:HashMap<ConfigKey,ListenerValue>) -> (Option<String>,HashMap<ConfigKey,ListenerValue>) {
         let items=subscribe_map.iter().collect::<Vec<_>>();
         if items.len()==0 {
             return (None,subscribe_map);
@@ -526,7 +531,7 @@ impl ConfigInnerSubscribeClient {
     }
 
 
-    async fn do_change_config(request_client:&ConfigInnerRequestClient,mut subscribe_map:HashMap<ConfigKey,ListeneValue>,key:&ConfigKey) -> HashMap<ConfigKey,ListeneValue> {
+    async fn do_change_config(request_client:&ConfigInnerRequestClient,mut subscribe_map:HashMap<ConfigKey,ListenerValue>,key:&ConfigKey) -> HashMap<ConfigKey,ListenerValue> {
         match request_client.get_config(key).await {
             Ok(content)  => {
                 let md5 = get_md5(&content);
