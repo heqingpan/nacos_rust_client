@@ -4,10 +4,11 @@ use std::sync::Arc;
 use std::{collections::HashMap,time::Duration};
 use anyhow::anyhow;
 use actix::prelude::*;
+use super::now_millis;
 
 use tokio::sync::RwLock;
 
-use super::{HostInfo,ServerEndpointInfo};
+use super::{HostInfo,ServerEndpointInfo, TokenInfo};
 use super::get_md5;
 
 fn ms(millis:u64) -> Duration {
@@ -135,14 +136,20 @@ pub struct ConfigClient{
     tenant:String,
     request_client:ConfigInnerRequestClient,
     subscribe_sender:ConfigInnerMsgSenderType,
-    subscribe_map:RwLock<HashMap<ConfigKey,Vec<Box<ConfigListenerFunc>>>>,
     subscribe_context:RwLock<HashMap<ConfigKey,String>>,
+    config_inner_addr: Addr<ConfigInnerActor> ,
+}
+
+impl Drop for ConfigClient {
+    fn drop(&mut self){
+        self.config_inner_addr.do_send(ConfigInnerCmd::Close);
+    }
 }
 
 #[derive(Debug,Clone)]
 pub struct ConfigInnerRequestClient{
     //host:HostInfo,
-    endpoints: ServerEndpointInfo,
+    endpoints: Arc<ServerEndpointInfo>,
     client: reqwest::Client,
     headers:HashMap<String,String>,
 }
@@ -164,7 +171,7 @@ impl ConfigInnerRequestClient {
             auth:None,
         };
         Self{
-            endpoints,
+            endpoints:Arc::new(endpoints),
             client,
             headers,
         }
@@ -250,7 +257,6 @@ impl ConfigInnerRequestClient {
     }
 }
 
-type ConfigListenerFunc =Fn(&ConfigKey,&str) + Send + 'static;
 
 pub trait ConfigListener {
     fn get_key(&self) -> ConfigKey;
@@ -308,15 +314,31 @@ impl ConfigClient {
     pub fn new(host:HostInfo,tenant:String) -> Self {
         let request_client = ConfigInnerRequestClient::new(host.clone());
         let (tx,rx) = tokio::sync::mpsc::channel::<ConfigInnerMsg>(100);
+        let config_inner_addr = Self::init_register(request_client.clone());
         ConfigInnerSubscribeClient::new(request_client.clone(),rx).spawn();
         Self{
             host,
             tenant,
             request_client,
             subscribe_sender:tx,
-            subscribe_map: Default::default(),
             subscribe_context: Default::default(),
+            config_inner_addr
         }
+    }
+
+    fn init_register(request_client:ConfigInnerRequestClient ) -> Addr<ConfigInnerActor> {
+        let (tx,rx) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let rt = System::new();
+            let addrs = rt.block_on(async {
+                let addr=ConfigInnerActor::new(request_client).start();
+                addr
+            });
+            tx.send(addrs);
+            rt.run();
+        });
+        let addrs = rx.recv().unwrap();
+        addrs
     }
 
     pub fn gene_config_key(&self,data_id:&str,group:&str) -> ConfigKey {
@@ -359,8 +381,10 @@ impl ConfigClient {
                 "".to_owned()
             },
         };
-        let msg=ConfigInnerMsg::SUBSCRIBE(key,id,md5,listener);
-        self.subscribe_sender.send(msg).await;
+        let msg=ConfigInnerCmd::SUBSCRIBE(key,id,md5,listener);
+        self.config_inner_addr.do_send(msg);
+        //let msg=ConfigInnerMsg::SUBSCRIBE(key,id,md5,listener);
+        //self.subscribe_sender.send(msg).await;
         Ok(())
     }
 }
@@ -420,7 +444,236 @@ impl ListenerValue {
 pub struct ConfigInnerActor{
     pub request_client : ConfigInnerRequestClient,
     subscribe_map:HashMap<ConfigKey,ListenerValue>,
+    use_auth:bool,
+    token:Arc<String>,
+    token_time_out:u64,
 }
+
+type ConfigInnerHandleResultSender = tokio::sync::oneshot::Sender<ConfigInnerHandleResult>;
+
+#[derive(Message)]
+#[rtype(result="Result<ConfigInnerHandleResult,std::io::Error>")]
+pub enum ConfigInnerCmd {
+    SUBSCRIBE(ConfigKey,u64,String,Box<ConfigListener + Send + 'static>),
+    REMOVE(ConfigKey,u64),
+    QueryToken(ConfigInnerHandleResultSender),
+    Close,
+}
+
+pub enum ConfigInnerHandleResult {
+    None,
+    Token(Arc<String>),
+    Value(String),
+}
+
+impl ConfigInnerActor{
+    fn new(request_client:ConfigInnerRequestClient) -> Self{
+        let use_auth=
+        if let Some(auth) = request_client.endpoints.auth.as_ref() {
+            auth.is_valid()
+        }
+        else{
+            false
+        };
+        Self { 
+            request_client,
+            subscribe_map: Default::default(),
+            use_auth,
+            token:Default::default(),
+            token_time_out:0u64,
+        }
+    }
+
+    fn send_token(&mut self,ctx:&mut Context<Self>,tx:ConfigInnerHandleResultSender){
+        if !self.use_auth{
+            tx.send(ConfigInnerHandleResult::None);
+            return;
+        }
+        let now = super::now_millis();
+        if now < self.token_time_out {
+            tx.send(ConfigInnerHandleResult::Token(self.token.clone()));
+            return;
+        } 
+        //get new token
+        let client = self.request_client.client.clone();
+        let endpoints = self.request_client.endpoints.clone();
+        async move{
+            let auth = endpoints.auth.clone().unwrap();
+            let result=super::Client::login(&client, endpoints, &auth).await;
+            (result,tx)
+        }
+        .into_actor(self).map(|(result,tx),this,ctx|{
+            match result {
+                Ok(token_info) => {
+                    this.token=Arc::new(token_info.access_token);
+                    this.token_time_out = super::now_millis()+(token_info.token_ttl-5)*1000;
+                    tx.send(ConfigInnerHandleResult::Token(this.token.to_owned()));
+                },
+                Err(_) => {
+                    tx.send(ConfigInnerHandleResult::None);
+                },
+            }
+        }).spawn(ctx);
+    }
+
+    fn update_token(&mut self,ctx:&mut actix::Context<Self>){
+        if !self.use_auth {
+            return;
+        }
+        let client = self.request_client.client.clone();
+        let endpoints = self.request_client.endpoints.clone();
+        async move{
+            let auth = endpoints.auth.clone().unwrap();
+            let result=super::Client::login(&client, endpoints, &auth).await;
+            result
+        }
+        .into_actor(self).map(|result,this,ctx|{
+            match result {
+                Ok(token_info) => {
+                    this.token=Arc::new(token_info.access_token);
+                    this.token_time_out = super::now_millis()+(token_info.token_ttl-5)*1000;
+                },
+                Err(_) => { },
+            }
+        }).wait(ctx);
+    }
+
+    fn get_token(&mut self,ctx:&mut actix::Context<Self>) -> Arc<String> {
+        if !self.use_auth{
+            return Default::default();
+        }
+        let now = super::now_millis();
+        if now < self.token_time_out {
+            return self.token.clone();
+        } 
+        self.update_token(ctx);
+        return self.token.to_owned();
+    }
+
+    fn do_change_config(&mut self,key:&ConfigKey,content:String){
+        let md5 = get_md5(&content);
+        match self.subscribe_map.get_mut(key) {
+            Some(v) => {
+                v.md5 = md5;
+                v.notify(key, &content);
+            },
+            None => {}
+        }
+    }
+
+    fn listener(&mut self,ctx:&mut actix::Context<Self>) {
+        if let Some(content) = self.get_listener_body(){
+            let request_client = self.request_client.clone();
+            let endpoints = self.request_client.endpoints.clone();
+            let token= self.get_token(ctx);
+            async move{
+                let mut list =vec![];
+                match request_client.listene(&content, None).await{
+                    Ok(items) => {
+                        for key in items {
+                            if let Ok(value)=request_client.get_config(&key).await {
+                                list.push((key,value));
+                            }
+                        }
+                    },
+                    Err(_) => {},
+                }
+                list
+            }
+            .into_actor(self).map(|r,this,ctx|{
+                for (key,context) in r {
+                    this.do_change_config(&key,context)
+                }
+                ctx.run_later(Duration::from_millis(5), |act,ctx|{
+                    act.listener(ctx);
+                });
+            }).spawn(ctx);
+        }
+    }
+
+    fn get_listener_body(&self) -> Option<String> {
+        let items=self.subscribe_map.iter().collect::<Vec<_>>();
+        if items.len()==0 {
+            return None;
+        }
+        let mut body=String::new();
+        for (k,v) in items {
+            body+= &format!("{}\x02{}\x02{}\x02{}\x01",k.data_id,k.group,v.md5,k.tenant);
+        }
+        Some(body)
+    }
+
+    fn hb(&self,ctx:&mut actix::Context<Self>) {
+        ctx.run_later(Duration::from_millis(5), |act,ctx|{
+            act.hb(ctx);
+        });
+    }
+
+}
+
+impl Actor for ConfigInnerActor {
+    type Context = Context<Self>;
+
+    fn started(&mut self,ctx:&mut Self::Context){
+        log::info!("ConfigInnerActor started");
+        ctx.run_later(Duration::from_millis(5), |act,ctx|{
+            act.listener(ctx);
+        });
+    }
+}
+
+impl Handler<ConfigInnerCmd> for ConfigInnerActor {
+    type Result = Result<ConfigInnerHandleResult,std::io::Error>;
+    fn handle(&mut self,msg:ConfigInnerCmd,ctx:&mut Context<Self>) -> Self::Result {
+        match msg {
+            ConfigInnerCmd::SUBSCRIBE(key,id,md5, func) => {
+                let first=self.subscribe_map.len()==0;
+                let list=self.subscribe_map.get_mut(&key);
+                match list {
+                    Some(v) => {
+                        v.push(id,func);
+                        if md5.len()> 0 {
+                            v.md5 = md5;
+                        }
+                    },
+                    None => {
+                        let v = ListenerValue::new(vec![(id,func)],md5);
+                        self.subscribe_map.insert(key, v);
+                    },
+                };
+                if first {
+                    ctx.run_later(Duration::from_millis(5), |act,ctx|{
+                        act.listener(ctx);
+                    });
+                }
+                Ok(ConfigInnerHandleResult::None)
+            },
+            ConfigInnerCmd::REMOVE(key, id) => {
+                let list=self.subscribe_map.get_mut(&key);
+                match list {
+                    Some(v) => {
+                        let size=v.remove(id);
+                        if size == 0 {
+                            self.subscribe_map.remove(&key);
+                        }
+                    },
+                    None => {},
+                };
+                Ok(ConfigInnerHandleResult::None)
+            },
+            ConfigInnerCmd::QueryToken(tx) => {
+                self.send_token(ctx,tx);
+                Ok(ConfigInnerHandleResult::None)
+            },
+            ConfigInnerCmd::Close => {
+                ctx.stop();
+                Ok(ConfigInnerHandleResult::None)
+            },
+        }
+    }
+}
+
+
 
 pub struct ConfigInnerSubscribeClient{
     request_client:ConfigInnerRequestClient,

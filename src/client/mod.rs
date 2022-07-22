@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub mod nacos_client;
 pub mod config_client;
@@ -7,6 +8,7 @@ pub mod naming_client;
 pub mod utils;
 
 use crypto::digest::Digest;
+use serde::{Serialize, Deserialize};
 
 pub use self::nacos_client::NacosClient;
 pub use self::config_client::ConfigClient;
@@ -59,6 +61,19 @@ impl HostInfo {
 pub struct AuthInfo {
     pub username:String,
     pub password:String,
+}
+
+impl AuthInfo {
+    pub fn is_valid(&self) -> bool {
+        self.username.len()> 0 && self.password.len()>0
+    }
+}
+
+#[derive(Debug,Serialize,Deserialize,Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenInfo {
+    pub access_token:String,
+    pub token_ttl:u64,
 }
 
 #[derive(Debug,Clone)]
@@ -114,5 +129,22 @@ impl Client {
             tenant: None,
         }
     }
+
+    pub async fn login(client:&reqwest::Client,endpoints:Arc<ServerEndpointInfo>,auth_info:&AuthInfo) -> anyhow::Result<TokenInfo> {
+        let mut param : HashMap<&str,&str> = HashMap::new();
+        param.insert("username", &auth_info.username);
+        param.insert("password", &auth_info.password);
+
+        let host = endpoints.select_host();
+        let url = format!("http://{}:{}/nacos/v1/auth/login",host.ip,host.port);
+        let resp=utils::Utils::request(client, "POST", &url, serde_urlencoded::to_string(&param).unwrap().as_bytes().to_vec(), None, Some(3000)).await?;
+        if !resp.status_is_200() {
+            return Err(anyhow::anyhow!("get config error"));
+        }
+        let text = resp.get_string_body();
+        let token = serde_json::from_str(&text)?;
+        Ok(token)
+    }
 }
+
 
