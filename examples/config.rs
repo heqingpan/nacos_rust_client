@@ -2,7 +2,7 @@ use std::time::Duration;
 use std::sync::Arc;
 
 use nacos_rust_client::client::{
-    HostInfo
+    HostInfo, AuthInfo
 };
 use nacos_rust_client::client::config_client::{
     ConfigClient,ConfigKey,ConfigListener,ConfigDefaultListener
@@ -18,8 +18,13 @@ pub struct Foo {
 
 #[tokio::main]
 async fn main() {
-    let host = HostInfo::parse("127.0.0.1:8848");
-    let mut config_client = ConfigClient::new(host,String::new());
+    //let host = HostInfo::parse("127.0.0.1:8848");
+    //let mut config_client = ConfigClient::new(host,String::new());
+    let tenant = String::new(); //default teant
+    let auth_info = AuthInfo::new("nacos","nacos");
+    let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,Some(auth_info));
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+
     let key = ConfigKey::new("001","foo","");
     //设置
     config_client.set_config(&key, "1234").await.unwrap();

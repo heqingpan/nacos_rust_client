@@ -7,6 +7,8 @@ pub mod naming_client;
 
 pub mod utils;
 
+pub mod auth;
+
 use crypto::digest::Digest;
 use serde::{Serialize, Deserialize};
 
@@ -64,6 +66,12 @@ pub struct AuthInfo {
 }
 
 impl AuthInfo {
+    pub fn new(username:&str,password:&str) -> Self {
+        Self { 
+            username: username.to_owned(), 
+            password: password.to_owned(),
+        }
+    }
     pub fn is_valid(&self) -> bool {
         self.username.len()> 0 && self.password.len()>0
     }
@@ -79,7 +87,6 @@ pub struct TokenInfo {
 #[derive(Debug,Clone)]
 pub struct ServerEndpointInfo {
     pub hosts:Vec<HostInfo>,
-    pub auth:Option<AuthInfo>,
 }
 
 impl ServerEndpointInfo {
@@ -94,19 +101,6 @@ impl ServerEndpointInfo {
         }
         Self {
             hosts:hosts,
-            auth:None,
-        }
-    }
-
-    pub fn new_with_auth(addrs:&str,auth:AuthInfo) -> Self {
-        let addrs=addrs.split(',').collect::<Vec<_>>();
-        let mut hosts = Vec::new();
-        for addr in addrs {
-            hosts.push(HostInfo::parse(&addr));
-        }
-        Self {
-            hosts:hosts,
-            auth:Some(auth),
         }
     }
 
@@ -134,10 +128,12 @@ impl Client {
         let mut param : HashMap<&str,&str> = HashMap::new();
         param.insert("username", &auth_info.username);
         param.insert("password", &auth_info.password);
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_owned(), "application/x-www-form-urlencoded".to_owned());
 
         let host = endpoints.select_host();
         let url = format!("http://{}:{}/nacos/v1/auth/login",host.ip,host.port);
-        let resp=utils::Utils::request(client, "POST", &url, serde_urlencoded::to_string(&param).unwrap().as_bytes().to_vec(), None, Some(3000)).await?;
+        let resp=utils::Utils::request(client, "POST", &url, serde_urlencoded::to_string(&param).unwrap().as_bytes().to_vec(), Some(&headers), Some(3000)).await?;
         if !resp.status_is_200() {
             return Err(anyhow::anyhow!("get config error"));
         }

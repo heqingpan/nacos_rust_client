@@ -4,7 +4,8 @@ use std::sync::Arc;
 use std::{collections::HashMap,time::Duration};
 use anyhow::anyhow;
 use actix::prelude::*;
-use super::now_millis;
+use super::auth::{AuthActor, AuthCmd};
+use super::{now_millis, AuthInfo};
 
 use super::{HostInfo,ServerEndpointInfo, TokenInfo};
 use super::get_md5;
@@ -130,7 +131,6 @@ impl ListenerItem {
 }
 
 pub struct ConfigClient{
-    host:HostInfo,
     tenant:String,
     request_client:ConfigInnerRequestClient,
     config_inner_addr: Addr<ConfigInnerActor> ,
@@ -142,12 +142,12 @@ impl Drop for ConfigClient {
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Clone)]
 pub struct ConfigInnerRequestClient{
-    //host:HostInfo,
     endpoints: Arc<ServerEndpointInfo>,
     client: reqwest::Client,
     headers:HashMap<String,String>,
+    auth_addr: Option<Addr<AuthActor>>,
 }
 
 impl ConfigInnerRequestClient {
@@ -164,12 +164,59 @@ impl ConfigInnerRequestClient {
             .build().unwrap();
         let endpoints = ServerEndpointInfo{
             hosts: vec![host],
-            auth:None,
         };
         Self{
             endpoints:Arc::new(endpoints),
             client,
             headers,
+            auth_addr:None,
+        }
+    }
+
+    pub fn new_with_endpoint(endpoints:Arc<ServerEndpointInfo>) -> Self {
+        let client = reqwest::Client::builder()
+            .build().unwrap();
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_owned(), "application/x-www-form-urlencoded".to_owned());
+        Self {
+            endpoints,
+            client,
+            headers,
+            auth_addr:None
+        }
+    } 
+
+    pub fn set_auth_addr(&mut self,addr:Addr<AuthActor>){
+        self.auth_addr = Some(addr);
+    }
+
+    pub async fn get_token(&self) -> String {
+        if let Some(auth_addr) = &self.auth_addr {
+            match auth_addr.send(AuthCmd::QueryToken).await {
+                Ok(result) => {
+                    match result {
+                        Ok(result) => {
+                            match result {
+                                super::auth::AuthHandleResult::None => {
+                                    Default::default()
+                                },
+                                super::auth::AuthHandleResult::Token(v) => {
+                                    format!("accessToken={}",&v)
+                                },
+                            }
+                        },
+                        Err(_) => {
+                            Default::default()
+                        },
+                    }
+                },
+                Err(_) => {
+                    Default::default()
+                },
+            }
+        }
+        else{
+            Default::default()
         }
     }
 
@@ -181,7 +228,8 @@ impl ConfigInnerRequestClient {
             param.insert("tenant",&key.tenant);
         }
         let host = self.endpoints.select_host();
-        let url = format!("http://{}:{}/nacos/v1/cs/configs?{}",host.ip,host.port,serde_urlencoded::to_string(&param).unwrap());
+        let token_param = self.get_token().await;
+        let url = format!("http://{}:{}/nacos/v1/cs/configs?{}&{}",host.ip,host.port,token_param,serde_urlencoded::to_string(&param).unwrap());
         let resp=Utils::request(&self.client, "GET", &url, vec![], Some(&self.headers), Some(3000)).await?;
         if !resp.status_is_200() {
             return Err(anyhow!("get config error"));
@@ -199,8 +247,9 @@ impl ConfigInnerRequestClient {
             param.insert("tenant",&key.tenant);
         }
         param.insert("content",value);
+        let token_param = self.get_token().await;
         let host = self.endpoints.select_host();
-        let url = format!("http://{}:{}/nacos/v1/cs/configs",host.ip,host.port);
+        let url = format!("http://{}:{}/nacos/v1/cs/configs?{}",host.ip,host.port,token_param);
 
         let body = serde_urlencoded::to_string(&param).unwrap();
         let resp=Utils::request(&self.client, "POST", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
@@ -218,8 +267,9 @@ impl ConfigInnerRequestClient {
         if key.tenant.len() > 0{
             param.insert("tenant",&key.tenant);
         }
+        let token_param = self.get_token().await;
         let host = self.endpoints.select_host();
-        let url = format!("http://{}:{}/nacos/v1/cs/configs",host.ip,host.port);
+        let url = format!("http://{}:{}/nacos/v1/cs/configs?{}",host.ip,host.port,token_param);
         let body = serde_urlencoded::to_string(&param).unwrap();
         let resp=Utils::request(&self.client, "DELETE", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
         if !resp.status_is_200() {
@@ -234,8 +284,9 @@ impl ConfigInnerRequestClient {
         let timeout = timeout.unwrap_or(30000u64);
         let timeout_str = timeout.to_string();
         param.insert("Listening-Configs", content);
+        let token_param = self.get_token().await;
         let host = self.endpoints.select_host();
-        let url = format!("http://{}:{}/nacos/v1/cs/configs/listener",host.ip,host.port);
+        let url = format!("http://{}:{}/nacos/v1/cs/configs/listener?{}",host.ip,host.port,token_param);
         let body = serde_urlencoded::to_string(&param).unwrap();
         let mut headers = self.headers.clone();
         headers.insert("Long-Pulling-Timeout".to_owned(), timeout_str);
@@ -308,25 +359,42 @@ impl <T> ConfigListener for ConfigDefaultListener<T> {
 
 impl ConfigClient {
     pub fn new(host:HostInfo,tenant:String) -> Self {
-        let request_client = ConfigInnerRequestClient::new(host.clone());
-        let config_inner_addr = Self::init_register(request_client.clone());
+        let mut request_client = ConfigInnerRequestClient::new(host.clone());
+        let (config_inner_addr,_) = Self::init_register(request_client.clone(),None);
+        //request_client.set_auth_addr(auth_addr);
         Self{
-            host,
             tenant,
             request_client,
             config_inner_addr
         }
     }
 
-    fn init_register(request_client:ConfigInnerRequestClient ) -> Addr<ConfigInnerActor> {
+    pub fn new_with_addrs(addrs:&str,tenant:String,auth_info:Option<AuthInfo>) -> Self {
+        let endpoint = Arc::new(ServerEndpointInfo::new(addrs));
+        let mut request_client = ConfigInnerRequestClient::new_with_endpoint(endpoint);
+        let (config_inner_addr,auth_addr) = Self::init_register(request_client.clone(),auth_info);
+        request_client.set_auth_addr(auth_addr);
+        Self{
+            tenant,
+            request_client,
+            config_inner_addr
+        }
+    }
+
+    fn init_register(mut request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>) -> (Addr<ConfigInnerActor>,Addr<AuthActor>) {
         let (tx,rx) = std::sync::mpsc::sync_channel(1);
+        let endpoint=request_client.endpoints.clone();
         std::thread::spawn(move || {
             let rt = System::new();
             let addrs = rt.block_on(async {
+                let auth_addr = AuthActor::new(endpoint,auth_info).start();
+                request_client.set_auth_addr(auth_addr.clone());
                 let addr=ConfigInnerActor::new(request_client).start();
-                addr
+                (addr,auth_addr)
             });
             tx.send(addrs);
+            log::info!("config actor init_register");
+            println!("config actor init_register");
             rt.run();
         });
         let addrs = rx.recv().unwrap();
@@ -427,9 +495,6 @@ impl ListenerValue {
 pub struct ConfigInnerActor{
     pub request_client : ConfigInnerRequestClient,
     subscribe_map:HashMap<ConfigKey,ListenerValue>,
-    use_auth:bool,
-    token:Arc<String>,
-    token_time_out:u64,
 }
 
 type ConfigInnerHandleResultSender = tokio::sync::oneshot::Sender<ConfigInnerHandleResult>;
@@ -439,98 +504,20 @@ type ConfigInnerHandleResultSender = tokio::sync::oneshot::Sender<ConfigInnerHan
 pub enum ConfigInnerCmd {
     SUBSCRIBE(ConfigKey,u64,String,Box<ConfigListener + Send + 'static>),
     REMOVE(ConfigKey,u64),
-    QueryToken(ConfigInnerHandleResultSender),
     Close,
 }
 
 pub enum ConfigInnerHandleResult {
     None,
-    Token(Arc<String>),
     Value(String),
 }
 
 impl ConfigInnerActor{
     fn new(request_client:ConfigInnerRequestClient) -> Self{
-        let use_auth=
-        if let Some(auth) = request_client.endpoints.auth.as_ref() {
-            auth.is_valid()
-        }
-        else{
-            false
-        };
         Self { 
             request_client,
             subscribe_map: Default::default(),
-            use_auth,
-            token:Default::default(),
-            token_time_out:0u64,
         }
-    }
-
-    fn send_token(&mut self,ctx:&mut Context<Self>,tx:ConfigInnerHandleResultSender){
-        if !self.use_auth{
-            tx.send(ConfigInnerHandleResult::None);
-            return;
-        }
-        let now = super::now_millis();
-        if now < self.token_time_out {
-            tx.send(ConfigInnerHandleResult::Token(self.token.clone()));
-            return;
-        } 
-        //get new token
-        let client = self.request_client.client.clone();
-        let endpoints = self.request_client.endpoints.clone();
-        async move{
-            let auth = endpoints.auth.clone().unwrap();
-            let result=super::Client::login(&client, endpoints, &auth).await;
-            (result,tx)
-        }
-        .into_actor(self).map(|(result,tx),this,ctx|{
-            match result {
-                Ok(token_info) => {
-                    this.token=Arc::new(token_info.access_token);
-                    this.token_time_out = super::now_millis()+(token_info.token_ttl-5)*1000;
-                    tx.send(ConfigInnerHandleResult::Token(this.token.to_owned()));
-                },
-                Err(_) => {
-                    tx.send(ConfigInnerHandleResult::None);
-                },
-            }
-        }).spawn(ctx);
-    }
-
-    fn update_token(&mut self,ctx:&mut actix::Context<Self>){
-        if !self.use_auth {
-            return;
-        }
-        let client = self.request_client.client.clone();
-        let endpoints = self.request_client.endpoints.clone();
-        async move{
-            let auth = endpoints.auth.clone().unwrap();
-            let result=super::Client::login(&client, endpoints, &auth).await;
-            result
-        }
-        .into_actor(self).map(|result,this,ctx|{
-            match result {
-                Ok(token_info) => {
-                    this.token=Arc::new(token_info.access_token);
-                    this.token_time_out = super::now_millis()+(token_info.token_ttl-5)*1000;
-                },
-                Err(_) => { },
-            }
-        }).wait(ctx);
-    }
-
-    fn get_token(&mut self,ctx:&mut actix::Context<Self>) -> Arc<String> {
-        if !self.use_auth{
-            return Default::default();
-        }
-        let now = super::now_millis();
-        if now < self.token_time_out {
-            return self.token.clone();
-        } 
-        self.update_token(ctx);
-        return self.token.to_owned();
     }
 
     fn do_change_config(&mut self,key:&ConfigKey,content:String){
@@ -548,7 +535,6 @@ impl ConfigInnerActor{
         if let Some(content) = self.get_listener_body(){
             let request_client = self.request_client.clone();
             let endpoints = self.request_client.endpoints.clone();
-            let token= self.get_token(ctx);
             async move{
                 let mut list =vec![];
                 match request_client.listene(&content, None).await{
@@ -567,9 +553,11 @@ impl ConfigInnerActor{
                 for (key,context) in r {
                     this.do_change_config(&key,context)
                 }
-                ctx.run_later(Duration::from_millis(5), |act,ctx|{
-                    act.listener(ctx);
-                });
+                if this.subscribe_map.len() > 0 {
+                    ctx.run_later(Duration::from_millis(5), |act,ctx|{
+                        act.listener(ctx);
+                    });
+                }
             }).spawn(ctx);
         }
     }
@@ -584,12 +572,6 @@ impl ConfigInnerActor{
             body+= &format!("{}\x02{}\x02{}\x02{}\x01",k.data_id,k.group,v.md5,k.tenant);
         }
         Some(body)
-    }
-
-    fn hb(&self,ctx:&mut actix::Context<Self>) {
-        ctx.run_later(Duration::from_millis(5), |act,ctx|{
-            act.hb(ctx);
-        });
     }
 
 }
@@ -642,10 +624,6 @@ impl Handler<ConfigInnerCmd> for ConfigInnerActor {
                     },
                     None => {},
                 };
-                Ok(ConfigInnerHandleResult::None)
-            },
-            ConfigInnerCmd::QueryToken(tx) => {
-                self.send_token(ctx,tx);
                 Ok(ConfigInnerHandleResult::None)
             },
             ConfigInnerCmd::Close => {
