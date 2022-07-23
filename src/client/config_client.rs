@@ -190,34 +190,22 @@ impl ConfigInnerRequestClient {
         self.auth_addr = Some(addr);
     }
 
-    pub async fn get_token(&self) -> String {
+    pub async fn get_token_result(&self) -> anyhow::Result<String>{
         if let Some(auth_addr) = &self.auth_addr {
-            match auth_addr.send(AuthCmd::QueryToken).await {
-                Ok(result) => {
-                    match result {
-                        Ok(result) => {
-                            match result {
-                                super::auth::AuthHandleResult::None => {
-                                    Default::default()
-                                },
-                                super::auth::AuthHandleResult::Token(v) => {
-                                    format!("accessToken={}",&v)
-                                },
-                            }
-                        },
-                        Err(_) => {
-                            Default::default()
-                        },
+            match auth_addr.send(AuthCmd::QueryToken).await?? {
+                super::auth::AuthHandleResult::None => {},
+                super::auth::AuthHandleResult::Token(v) => {
+                    if v.len()> 0{
+                        return Ok(format!("accessToken={}",&v));
                     }
                 },
-                Err(_) => {
-                    Default::default()
-                },
-            }
+            };
         }
-        else{
-            Default::default()
-        }
+        Ok(String::new())
+    }
+
+    pub async fn get_token(&self) -> String {
+        self.get_token_result().await.unwrap_or_default()
     }
 
     pub async fn get_config(&self,key:&ConfigKey) -> anyhow::Result<String> {
@@ -369,16 +357,16 @@ impl ConfigClient {
         }
     }
 
-    pub fn new_with_addrs(addrs:&str,tenant:String,auth_info:Option<AuthInfo>) -> Self {
+    pub fn new_with_addrs(addrs:&str,tenant:String,auth_info:Option<AuthInfo>) -> Arc<Self> {
         let endpoint = Arc::new(ServerEndpointInfo::new(addrs));
         let mut request_client = ConfigInnerRequestClient::new_with_endpoint(endpoint);
         let (config_inner_addr,auth_addr) = Self::init_register(request_client.clone(),auth_info);
         request_client.set_auth_addr(auth_addr);
-        Self{
+        Arc::new(Self{
             tenant,
             request_client,
             config_inner_addr
-        }
+        })
     }
 
     fn init_register(mut request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>) -> (Addr<ConfigInnerActor>,Addr<AuthActor>) {
