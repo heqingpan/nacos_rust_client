@@ -942,7 +942,7 @@ impl NamingClient {
         })
     }
 
-    pub fn new_with_addr(addrs:&str,namespace_id:String,auth_info:Option<AuthInfo>) -> Arc<Self> {
+    pub fn new_with_addrs(addrs:&str,namespace_id:String,auth_info:Option<AuthInfo>) -> Arc<Self> {
         let endpoint = Arc::new(ServerEndpointInfo::new(addrs));
         let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint);
         let current_ip = match env::var("IP"){

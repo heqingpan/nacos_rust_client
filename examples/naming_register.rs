@@ -17,7 +17,7 @@ async fn main(){
     let namespace_id = "public".to_owned(); //default teant
     //let auth_info = Some(AuthInfo::new("nacos","nacos"));
     let auth_info = None;
-    let client = NamingClient::new_with_addr("127.0.0.1:8848,127.0.0.1:8848", namespace_id, auth_info);
+    let client = NamingClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848", namespace_id, auth_info);
     let servcie_key = ServiceInstanceKey::new("foo","DEFAULT_GROUP");
     //可以通过监听器获取指定服务的最新实现列表，并支持触发变更回调函数,可用于适配微服务地址选择器。
     let default_listener = InstanceDefaultListener::new(servcie_key,Some(Arc::new(
