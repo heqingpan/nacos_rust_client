@@ -1,3 +1,6 @@
+use crate::client::ServerEndpointInfo;
+use crate::client::auth::AuthActor;
+use crate::client::AuthInfo;
 use std::collections::HashSet;
 use std::{sync::Arc, thread::Thread};
 use std::time::Duration;
@@ -5,6 +8,7 @@ use std::env;
 use actix::prelude::*;
 use std::collections::HashMap;
 use inner_mem_cache::TimeoutSet;
+use super::auth::AuthCmd;
 use super::now_millis;
 use crate::client::HostInfo;
 use super::utils::{self,Utils};
@@ -17,11 +21,12 @@ pub use udp_actor::{UdpWorker,UdpDataCmd};
 
 static REGISTER_PERIOD :u64 = 5000u64;
 
-#[derive(Debug,Clone)]
-struct InnerNamingRequestClient{
-    host:HostInfo,
+#[derive(Clone)]
+pub struct InnerNamingRequestClient{
     client: reqwest::Client,
     headers:HashMap<String,String>,
+    endpoints: Arc<ServerEndpointInfo>,
+    auth_addr: Option<Addr<AuthActor>>,
 }
 
 impl InnerNamingRequestClient{
@@ -37,17 +42,58 @@ impl InnerNamingRequestClient{
             .build().unwrap();
         let mut headers = HashMap::new();
         headers.insert("Content-Type".to_owned(), "application/x-www-form-urlencoded".to_owned());
+        let endpoints = Arc::new(ServerEndpointInfo{
+            hosts: vec![host],
+        });
         Self{
-            host,
             client,
             headers,
+            endpoints,
+            auth_addr:None,
         }
+    }
+
+    pub fn new_with_endpoint(endpoints:Arc<ServerEndpointInfo>) -> Self {
+        let client = reqwest::Client::builder()
+            .build().unwrap();
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_owned(), "application/x-www-form-urlencoded".to_owned());
+        Self {
+            endpoints,
+            client,
+            headers,
+            auth_addr:None
+        }
+    } 
+
+    pub fn set_auth_addr(&mut self,addr:Addr<AuthActor>){
+        self.auth_addr = Some(addr);
+    }
+
+    pub async fn get_token_result(&self) -> anyhow::Result<String>{
+        if let Some(auth_addr) = &self.auth_addr {
+            match auth_addr.send(AuthCmd::QueryToken).await?? {
+                super::auth::AuthHandleResult::None => {},
+                super::auth::AuthHandleResult::Token(v) => {
+                    if v.len()> 0{
+                        return Ok(format!("accessToken={}",&v));
+                    }
+                },
+            };
+        }
+        Ok(String::new())
+    }
+
+    pub async fn get_token(&self) -> String {
+        self.get_token_result().await.unwrap_or_default()
     }
 
     async fn register(&self,instance:&Instance) -> anyhow::Result<bool>{
         let params = instance.to_web_params();
         let body = serde_urlencoded::to_string(&params)?;
-        let url = format!("http://{}:{}/nacos/v1/ns/instance",&self.host.ip,&self.host.port);
+        let host = self.endpoints.select_host();
+        let token_param = self.get_token().await;
+        let url = format!("http://{}:{}/nacos/v1/ns/instance?{}",&host.ip,&host.port,token_param);
         let resp=Utils::request(&self.client, "POST", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
         log::info!("register:{}",resp.get_lossy_string_body());
         Ok("ok"==resp.get_string_body())
@@ -56,14 +102,18 @@ impl InnerNamingRequestClient{
     async fn remove(&self,instance:&Instance) -> anyhow::Result<bool>{
         let params = instance.to_web_params();
         let body = serde_urlencoded::to_string(&params)?;
-        let url = format!("http://{}:{}/nacos/v1/ns/instance",&self.host.ip,&self.host.port);
+        let host = self.endpoints.select_host();
+        let token_param = self.get_token().await;
+        let url = format!("http://{}:{}/nacos/v1/ns/instance?{}",&host.ip,&host.port,token_param);
         let resp=Utils::request(&self.client, "DELETE", &url, body.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
         log::info!("remove:{}",resp.get_lossy_string_body());
         Ok("ok"==resp.get_string_body())
     }
 
     async fn heartbeat(&self,beat_string:Arc<String>) -> anyhow::Result<bool>{
-        let url = format!("http://{}:{}/nacos/v1/ns/instance/beat",&self.host.ip,&self.host.port);
+        let host = self.endpoints.select_host();
+        let token_param = self.get_token().await;
+        let url = format!("http://{}:{}/nacos/v1/ns/instance/beat?{}",&host.ip,&host.port,token_param);
         let resp=Utils::request(&self.client, "PUT", &url, beat_string.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
         log::debug!("heartbeat:{}",resp.get_lossy_string_body());
         return Ok( "ok"==resp.get_string_body());
@@ -71,8 +121,10 @@ impl InnerNamingRequestClient{
 
     async fn get_instance_list(&self,query_param:&QueryInstanceListParams) -> anyhow::Result<QueryListResult> {
         let params = query_param.to_web_params();
-        let url = format!("http://{}:{}/nacos/v1/ns/instance/list?{}",&self.host.ip,&self.host.port
-                ,&serde_urlencoded::to_string(&params)?);
+        let token_param = self.get_token().await;
+        let host = self.endpoints.select_host();
+        let url = format!("http://{}:{}/nacos/v1/ns/instance/list?{}&{}",&host.ip,&host.port
+                ,token_param,&serde_urlencoded::to_string(&params)?);
         let resp=Utils::request(&self.client, "GET", &url, vec![], Some(&self.headers), Some(3000)).await?;
         
         let result:Result<QueryListResult,_>=serde_json::from_slice(&resp.body);
@@ -205,11 +257,11 @@ pub struct InnerNamingRegister{
 
 impl InnerNamingRegister {
 
-    pub fn new(host:HostInfo) -> Self{
+    pub fn new(request_client:InnerNamingRequestClient) -> Self{
         Self{
             instances:Default::default(),
             timeout_set:Default::default(),
-            request_client: InnerNamingRequestClient::new(host),
+            request_client,
             period: REGISTER_PERIOD,
             stop_remove_all:false,
         }
@@ -454,13 +506,13 @@ pub struct InnerNamingListener {
 }
 
 impl InnerNamingListener {
-    pub fn new(namespace_id:&str,client_ip:&str,udp_port:u16,host:HostInfo,udp_addr:Addr<UdpWorker>) -> Self{
+    pub fn new(namespace_id:&str,client_ip:&str,udp_port:u16,request_client:InnerNamingRequestClient,udp_addr:Addr<UdpWorker>) -> Self{
         Self{
             namespace_id:namespace_id.to_owned(),
             listeners: Default::default(),
             instances: Default::default(),
             timeout_set: Default::default(),
-            request_client: InnerNamingRequestClient::new(host),
+            request_client,
             period:3000,
             client_ip:client_ip.to_owned(),
             udp_port:udp_port,
@@ -789,7 +841,6 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
 }
 
 pub struct NamingClient{
-    host:HostInfo,
     pub namespace_id:String,
     register:Addr<InnerNamingRegister>,
     listener_addr:Addr<InnerNamingListener>,
@@ -813,9 +864,12 @@ impl NamingClient {
                 local_ipaddress::get().unwrap()
             },
         };
-        let addrs=Self::init_register(namespace_id.clone(),current_ip.clone(),host.clone());
+        let endpoint = Arc::new(ServerEndpointInfo{
+            hosts:vec![host]
+        });
+        let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint);
+        let addrs=Self::init_register(namespace_id.clone(),current_ip.clone(),request_client,None);
         Arc::new(Self{
-            host,
             namespace_id,
             register:addrs.0,
             listener_addr:addrs.1,
@@ -823,20 +877,41 @@ impl NamingClient {
         })
     }
 
-    fn init_register(namespace_id:String,client_ip:String,host:HostInfo) -> (Addr<InnerNamingRegister>,Addr<InnerNamingListener>) {
+    pub fn new_with_addr(addrs:&str,namespace_id:String,auth_info:Option<AuthInfo>) -> Arc<Self> {
+        let endpoint = Arc::new(ServerEndpointInfo::new(addrs));
+        let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint);
+        let current_ip = match env::var("IP"){
+            Ok(v) => v,
+            Err(_) => {
+                local_ipaddress::get().unwrap()
+            },
+        };
+        let addrs=Self::init_register(namespace_id.clone(),current_ip.clone(),request_client,auth_info);
+        Arc::new(Self{
+            namespace_id,
+            register:addrs.0,
+            listener_addr:addrs.1,
+            current_ip,
+        })
+    }
+
+    fn init_register(namespace_id:String,client_ip:String,mut request_client:InnerNamingRequestClient,auth_info:Option<AuthInfo>) -> (Addr<InnerNamingRegister>,Addr<InnerNamingListener>) {
         use tokio::net::{UdpSocket};
         let (tx,rx) = std::sync::mpsc::sync_channel(1);
         std::thread::spawn(move || {
             let rt = System::new();
+            let endpoint=request_client.endpoints.clone();
             let addrs = rt.block_on(async {
+                let auth_addr = AuthActor::new(endpoint,auth_info).start();
+                request_client.set_auth_addr(auth_addr);
                 let socket=UdpSocket::bind("0.0.0.0:0").await.unwrap();
                 let port = socket.local_addr().unwrap().port();
-                let new_host=host.clone();
+                let new_request_client = request_client.clone();
                 let listener_addr=InnerNamingListener::create(move |ctx| {
                     let udp_addr = UdpWorker::new_with_socket(socket, ctx.address()).start();
-                    InnerNamingListener::new(&namespace_id,&client_ip,port, new_host,udp_addr) 
+                    InnerNamingListener::new(&namespace_id,&client_ip,port, new_request_client,udp_addr) 
                 });
-                (InnerNamingRegister::new(host.clone()).start(),
+                (InnerNamingRegister::new(request_client).start(),
                     listener_addr
                 )
             });

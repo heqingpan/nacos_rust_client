@@ -1,3 +1,4 @@
+use nacos_rust_client::client::AuthInfo;
 use std::sync::Arc;
 use std::io::{Read, stdin};
 
@@ -11,8 +12,12 @@ use nacos_rust_client::client::{HostInfo, naming_client::{NamingClient, Instance
 async fn main(){
     std::env::set_var("RUST_LOG","INFO");
     env_logger::init();
-    let host = HostInfo::parse("127.0.0.1:8848");
-    let client = NamingClient::new(host,"".to_owned());
+    //let host = HostInfo::parse("127.0.0.1:8848");
+    //let client = NamingClient::new(host,"".to_owned());
+    let namespace_id = "public".to_owned(); //default teant
+    let auth_info = Some(AuthInfo::new("nacos","nacos"));
+    //let auth_info = None;
+    let client = NamingClient::new_with_addr("127.0.0.1:8848,127.0.0.1:8848", namespace_id, auth_info);
 
     let ip = local_ipaddress::get().unwrap();
     for i in 0..10{

@@ -18,6 +18,8 @@ pub struct Foo {
 
 #[tokio::main]
 async fn main() {
+    std::env::set_var("RUST_LOG","INFO");
+    env_logger::init();
     //let host = HostInfo::parse("127.0.0.1:8848");
     //let config_client = ConfigClient::new(host,String::new());
     let tenant = "public".to_owned(); //default teant
