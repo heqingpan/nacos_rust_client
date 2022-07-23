@@ -435,6 +435,14 @@ impl ConfigClient {
         //self.subscribe_sender.send(msg).await;
         Ok(())
     }
+
+    pub async fn unsubscribe(&self,key:ConfigKey ) -> anyhow::Result<()>{
+        let id = 0u64;
+        let msg = ConfigInnerCmd::REMOVE(key, id);
+        self.config_inner_addr.do_send(msg);
+        Ok(())
+    }
+
 }
 
 struct ListenerValue {

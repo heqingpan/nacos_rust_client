@@ -398,7 +398,7 @@ pub struct ServiceInstanceKey {
 }
 
 impl ServiceInstanceKey{
-    pub fn new(group_name:&str,service_name:&str) -> Self{
+    pub fn new(service_name:&str,group_name:&str) -> Self{
         Self{
             group_name:group_name.to_owned(),
             service_name:service_name.to_owned(),
@@ -462,10 +462,60 @@ impl QueryInstanceListParams{
     }
 }
 
+type InstanceListenerValue= Vec<Arc<Instance>>;
 pub trait InstanceListener {
     fn get_key(&self) -> ServiceInstanceKey;
-    fn change(&self,key:&ServiceInstanceKey,value:&Vec<Arc<Instance>>) -> ();
+    fn change(&self,key:&ServiceInstanceKey,value:&InstanceListenerValue,add_list:&InstanceListenerValue,remove_list:&InstanceListenerValue) -> ();
 }
+
+#[derive(Clone)]
+pub struct InstanceDefaultListener {
+    key:ServiceInstanceKey,
+    pub content:Arc<std::sync::RwLock<Option<Arc<Vec<Arc<Instance>>>>>>,
+    pub callback:Option<Arc<Fn(Arc<InstanceListenerValue>,InstanceListenerValue,InstanceListenerValue)-> () +Send+Sync>>,
+}
+
+impl InstanceDefaultListener{
+    pub fn new( key:ServiceInstanceKey,callback:Option<Arc<Fn(Arc<InstanceListenerValue>,InstanceListenerValue,InstanceListenerValue)-> () +Send+Sync>>) -> Self {
+        Self{
+            key,
+            content: Default::default(),
+            callback,
+        }
+    }
+
+    pub fn get_content(&self) -> Arc<Vec<Arc<Instance>>> {
+        match self.content.read().unwrap().as_ref() {
+            Some(c) => c.clone(),
+            _ => Default::default()
+        }
+    }
+
+    fn set_value(content:Arc<std::sync::RwLock<Option<Arc<Vec<Arc<Instance>>>>>>,value:Vec<Arc<Instance>>){
+        let mut r = content.write().unwrap();
+        *r = Some(Arc::new(value));
+    }
+
+}
+
+impl InstanceListener for InstanceDefaultListener {
+    
+    fn get_key(&self) -> ServiceInstanceKey { 
+        self.key.clone()
+    }
+
+    fn change(&self,key:&ServiceInstanceKey,value:&Vec<Arc<Instance>>,add:&Vec<Arc<Instance>>,remove:&Vec<Arc<Instance>>) -> () {
+        log::debug!("InstanceDefaultListener change,key{:?},valid count:{},add count:{},remove count:{}",key,value.len(),add.len(),remove.len());
+        let content = self.content.clone();
+        if value.len() > 0 {
+            Self::set_value(content, value.clone());
+            if let Some(callback) = &self.callback {
+                callback(self.get_content(),add.clone(),remove.clone());
+            }
+        }
+    }
+}
+
 
 struct ListenerValue{
     pub listener_key:ServiceInstanceKey,
@@ -546,11 +596,15 @@ impl InnerNamingListener {
             self.period = cache_millis;
         }
         let mut is_notify=false;
+        let mut old_instance_map = HashMap::new();
         if let Some(instance_warp) = self.instances.get_mut(&key) {
             let checksum = result.checksum.unwrap_or("".to_owned());
             if instance_warp.last_sign != checksum || instance_warp.last_sign.len()==0 {
                 instance_warp.last_sign = checksum;
                 if let Some(hosts) = result.hosts {
+                    for e in &instance_warp.instances {
+                        old_instance_map.insert(format!("{}:{}",e.ip,e.port), e.clone());
+                    }
                     instance_warp.instances = hosts.into_iter()
                         .map(|e| Arc::new(e.to_instance()))
                         .filter(|e|e.weight>0.001f32)
@@ -563,17 +617,28 @@ impl InnerNamingListener {
         }
         if is_notify {
             if let Some(instance_warp) = self.instances.get(&key) {
-                self.notify_listener(key, &instance_warp.instances);
+                let mut add_list = vec![];
+                for item in &instance_warp.instances {
+                    let key = format!("{}:{}",item.ip,item.port);
+                    if old_instance_map.remove(&key).is_none() {
+                        add_list.push(item.clone());
+                    }
+                }
+                let remove_list:Vec<Arc<Instance>> = old_instance_map.into_iter().map(|(k,v)| {v}).collect();
+                self.notify_listener(key, &instance_warp.instances,add_list,remove_list);
             }
         }
         Ok(())
     }
 
-    fn notify_listener(&self,key_str:String,instances:&Vec<Arc<Instance>>) {
+    fn notify_listener(&self,key_str:String,instances:&Vec<Arc<Instance>>,add_list:Vec<Arc<Instance>>,remove_list:Vec<Arc<Instance>>) {
+        if add_list.len()==0 && remove_list.len()==0 {
+            return;
+        }
         let key =ServiceInstanceKey::from_str(&key_str); 
         if let Some(list) = self.listeners.get(&key_str) {
             for item in list {
-                item.listener.change(&key, instances);
+                item.listener.change(&key, instances,&add_list,&remove_list);
             }
         }
     }
@@ -600,7 +665,6 @@ impl InnerNamingListener {
             //}
         }
         else{
-            let current_time = now_millis();
             let addr = ctx.address();
             addr.do_send(NamingListenerCmd::AddHeartbeat(ServiceInstanceKey::from_str(&key)));
         }
@@ -631,7 +695,7 @@ impl Actor for InnerNamingListener {
 #[derive(Message)]
 #[rtype(result = "Result<(),std::io::Error>")]
 pub enum NamingListenerCmd {
-    Add(Box<dyn InstanceListener+Send>,u64),
+    Add(ServiceInstanceKey,u64,Box<InstanceListener+Send+'static>),
     Remove(ServiceInstanceKey,u64),
     AddHeartbeat(ServiceInstanceKey),
     Heartbeat(String,u64),
@@ -642,12 +706,13 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
 
     fn handle(&mut self,msg:NamingListenerCmd,ctx:&mut Context<Self>) -> Self::Result  {
         match msg {
-            NamingListenerCmd::Add(listener,id) => {
-                let key = listener.get_key();
+            NamingListenerCmd::Add(key,id,listener) => {
                 let key_str = key.get_key();
                 //如果已经存在，则直接触发一次
                 if let Some(instance_wrap) = self.instances.get(&key_str) {
-                    listener.change(&key, &instance_wrap.instances);
+                    if instance_wrap.instances.len() > 0{
+                        listener.change(&key, &instance_wrap.instances,&instance_wrap.instances,&vec![]);
+                    }
                 }
                 let listener_value = ListenerValue::new(key.clone(),listener,id);
                 if let Some(list) = self.listeners.get_mut(&key_str) {
@@ -955,4 +1020,36 @@ impl NamingClient {
             }
         }
     }
+
+    pub async fn subscribe<T:InstanceListener + Send + 'static>(&self,listener:Box<T>) -> anyhow::Result<()> {
+        let key = listener.get_key();
+        self.subscribe_with_key(key, listener).await
+    }
+
+    pub async fn subscribe_with_key<T:InstanceListener + Send + 'static>(&self,key:ServiceInstanceKey,listener:Box<T>) -> anyhow::Result<()> {
+        //let msg=NamingListenerCmd::AddHeartbeat(key.clone());
+        //self.listener_addr.do_send(msg);
+        let id=0u64;
+        /*
+        let params = QueryInstanceListParams::new(&self.namespace_id,&key.group_name,&key.service_name,None,true);
+        match self.query_instances(params).await {
+            Ok(v) => {
+                listener.change(&key, &v,&v,&vec![]);
+            },
+            Err(_) => {},
+        };
+         */
+        let msg=NamingListenerCmd::Add(key,id,listener);
+        self.listener_addr.do_send(msg);
+        Ok(())
+    }
+
+    pub async fn unsubscribe(&self,key:ServiceInstanceKey) -> anyhow::Result<()>{
+        let id=0u64;
+        let msg = NamingListenerCmd::Remove(key, id);
+        self.listener_addr.do_send(msg);
+        Ok(())
+    }
+
+
 }
