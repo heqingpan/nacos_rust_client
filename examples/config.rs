@@ -1,11 +1,9 @@
 use std::time::Duration;
 use std::sync::Arc;
 
-use nacos_rust_client::client::{
-    HostInfo, AuthInfo
-};
+use nacos_rust_client::client::{ HostInfo, AuthInfo };
 use nacos_rust_client::client::config_client::{
-    ConfigClient,ConfigKey,ConfigListener,ConfigDefaultListener
+    ConfigClient,ConfigKey,ConfigDefaultListener
 };
 use serde::{Serialize,Deserialize};
 use serde_json;
@@ -23,8 +21,8 @@ async fn main() {
     //let host = HostInfo::parse("127.0.0.1:8848");
     //let config_client = ConfigClient::new(host,String::new());
     let tenant = "public".to_owned(); //default teant
-    let auth_info = Some(AuthInfo::new("nacos","nacos"));
-    //let auth_info = None;
+    //let auth_info = Some(AuthInfo::new("nacos","nacos"));
+    let auth_info = None;
     let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,auth_info);
     tokio::time::sleep(Duration::from_millis(1000)).await;
 

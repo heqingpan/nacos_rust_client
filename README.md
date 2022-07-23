@@ -4,7 +4,7 @@
 ## 介绍
 rust实现的nacos客户端。
 
-目前暂时只支持`1.x`版本。
+目前暂时只支持`1.x`版http协议，`2.x`服务兼容`1.x`协议。
 
 1. 支持配置中心的推送、获取、监听
 2. 支持注册中心的服务实例注册(自动维护心跳)、服务实例获取(自动监听缓存实例列表)
@@ -36,11 +36,9 @@ nacos_rust_client = "0.1"
 use std::time::Duration;
 use std::sync::Arc;
 
-use nacos_rust_client::client::{
-    HostInfo
-};
+use nacos_rust_client::client::{ HostInfo, AuthInfo };
 use nacos_rust_client::client::config_client::{
-    ConfigClient,ConfigKey,ConfigListener,ConfigDefaultListener
+    ConfigClient,ConfigKey,ConfigDefaultListener
 };
 use serde::{Serialize,Deserialize};
 use serde_json;
@@ -53,8 +51,16 @@ pub struct Foo {
 
 #[tokio::main]
 async fn main() {
-    let host = HostInfo::parse("127.0.0.1:8848");
-    let mut config_client = ConfigClient::new(host,String::new());
+    std::env::set_var("RUST_LOG","INFO");
+    env_logger::init();
+    //let host = HostInfo::parse("127.0.0.1:8848");
+    //let config_client = ConfigClient::new(host,String::new());
+    let tenant = "public".to_owned(); //default teant
+    //let auth_info = Some(AuthInfo::new("nacos","nacos"));
+    let auth_info = None;
+    let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,auth_info);
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+
     let key = ConfigKey::new("001","foo","");
     //设置
     config_client.set_config(&key, "1234").await.unwrap();
@@ -103,28 +109,40 @@ async fn main() {
 ### 服务中心例子
 
 ```rust
+use nacos_rust_client::client::naming_client::{ServiceInstanceKey, InstanceDefaultListener};
 use std::sync::Arc;
-use std::io::{Read, stdin};
 
 use std::time::Duration;
 
-use nacos_rust_client::client::{HostInfo, naming_client::{NamingClient, Instance,QueryInstanceListParams}};
+use nacos_rust_client::client::{HostInfo, AuthInfo, naming_client::{NamingClient, Instance,QueryInstanceListParams}};
 
 
 
 #[tokio::main]
 async fn main(){
+    //std::env::set_var("RUST_LOG","INFO");
     std::env::set_var("RUST_LOG","INFO");
     env_logger::init();
-    let host = HostInfo::parse("127.0.0.1:8848");
-    let client = NamingClient::new(host,"".to_owned());
-
+    //let host = HostInfo::parse("127.0.0.1:8848");
+    //let client = NamingClient::new(host,"".to_owned());
+    let namespace_id = "public".to_owned(); //default teant
+    //let auth_info = Some(AuthInfo::new("nacos","nacos"));
+    let auth_info = None;
+    let client = NamingClient::new_with_addr("127.0.0.1:8848,127.0.0.1:8848", namespace_id, auth_info);
+    let servcie_key = ServiceInstanceKey::new("foo","DEFAULT_GROUP");
+    //可以通过监听器获取指定服务的最新实现列表，并支持触发变更回调函数,可用于适配微服务地址选择器。
+    let default_listener = InstanceDefaultListener::new(servcie_key,Some(Arc::new(
+        |instances,add_list,remove_list| {
+            println!("service instances change,count:{},add count:{},remove count:{}",instances.len(),add_list.len(),remove_list.len());
+        })));
+    client.subscribe(Box::new(default_listener)).await.unwrap();
     let ip = local_ipaddress::get().unwrap();
     for i in 0..10{
         let port=10000+i;
-        let instance = Instance::new(&ip,port,"foo","","","",None);
+        let instance = Instance::new(&ip,port,"foo","DEFAULT_GROUP","","",None);
         //注册
         client.register(instance);
+        tokio::time::sleep(Duration::from_millis(1000)).await;
     }
 
     //tokio::spawn(async{query_params2().await.unwrap();});
