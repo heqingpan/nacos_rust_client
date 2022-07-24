@@ -15,4 +15,8 @@ edition = "2018"
 nacos_rust_client = {path="../nacos_rust_client" }
 tonic = "0.7"
 tower = "0.4"
+actix = "0.12"
+log="0"
+tokio = {version="1",features=["full"]}
+anyhow="1"
 

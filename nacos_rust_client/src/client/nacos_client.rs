@@ -100,6 +100,30 @@ impl Handler<ActixSystemCmd> for ActixSystemActor
     }
 }
 
+pub trait ActorCreate {
+    fn create(&self) -> ();
+}
+type ActixSystemCreateResultSender = std::sync::mpsc::SyncSender<()>;
+
+#[derive(Message)]
+#[rtype(result="Result<(),std::io::Error>")]
+pub enum ActixSystemCreateCmd{
+    ActorInit(Box<dyn ActorCreate+Send>,ActixSystemCreateResultSender)
+}
+
+impl Handler<ActixSystemCreateCmd> for ActixSystemActor 
+{
+    type Result = Result<(),std::io::Error>;
+    fn handle(&mut self,msg:ActixSystemCreateCmd,ctx:&mut Context<Self>) -> Self::Result {
+        match msg {
+            ActixSystemCreateCmd::ActorInit(t,tx) => {
+                t.create();
+                tx.send(()).unwrap();
+            },
+        };
+        Ok(())
+    }
+}
 
 lazy_static::lazy_static! {
     static ref ACTIX_SYSTEM: Mutex<Option<Addr<ActixSystemActor>>> =  Mutex::new(None);
