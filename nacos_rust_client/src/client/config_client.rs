@@ -1,10 +1,13 @@
 
+use crate::client::nacos_client::ActixSystemCmd;
+use crate::init_global_system_actor;
 use crate::client::utils::Utils;
 use std::sync::Arc;
 use std::{collections::HashMap,time::Duration};
 use anyhow::anyhow;
 use actix::prelude::*;
 use super::auth::{AuthActor, AuthCmd};
+use super::nacos_client::ActixSystemActor;
 use super::{now_millis, AuthInfo};
 
 use super::{HostInfo,ServerEndpointInfo, TokenInfo};
@@ -348,7 +351,7 @@ impl <T> ConfigListener for ConfigDefaultListener<T> {
 impl ConfigClient {
     pub fn new(host:HostInfo,tenant:String) -> Self {
         let mut request_client = ConfigInnerRequestClient::new(host.clone());
-        let (config_inner_addr,_) = Self::init_register(request_client.clone(),None);
+        let (config_inner_addr,_) = Self::init_register2(request_client.clone(),None);
         //request_client.set_auth_addr(auth_addr);
         Self{
             tenant,
@@ -360,7 +363,7 @@ impl ConfigClient {
     pub fn new_with_addrs(addrs:&str,tenant:String,auth_info:Option<AuthInfo>) -> Arc<Self> {
         let endpoint = Arc::new(ServerEndpointInfo::new(addrs));
         let mut request_client = ConfigInnerRequestClient::new_with_endpoint(endpoint);
-        let (config_inner_addr,auth_addr) = Self::init_register(request_client.clone(),auth_info);
+        let (config_inner_addr,auth_addr) = Self::init_register2(request_client.clone(),auth_info);
         request_client.set_auth_addr(auth_addr);
         Arc::new(Self{
             tenant,
@@ -387,6 +390,28 @@ impl ConfigClient {
         });
         let addrs = rx.recv().unwrap();
         addrs
+    }
+
+    fn init_register2(mut request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>) -> (Addr<ConfigInnerActor>,Addr<AuthActor>){
+        let system_addr =  init_global_system_actor();
+        let endpoint=request_client.endpoints.clone();
+        let actor = AuthActor::new(endpoint,auth_info);
+        let (tx,rx) = std::sync::mpsc::sync_channel(1);
+        let msg = ActixSystemCmd::AuthActor(actor,tx);
+        system_addr.do_send(msg);
+        let auth_addr= match rx.recv().unwrap() {
+            super::nacos_client::ActixSystemResult::AuthActorAddr(auth_addr) => auth_addr,
+            _ => panic!("init actor error"),
+        };
+        let actor = ConfigInnerActor::new(request_client);
+        let (tx,rx) = std::sync::mpsc::sync_channel(1);
+        let msg = ActixSystemCmd::ConfigInnerActor(actor,tx);
+        system_addr.do_send(msg);
+        let config_inner_addr= match rx.recv().unwrap() {
+            super::nacos_client::ActixSystemResult::ConfigInnerActor(addr) => addr,
+            _ => panic!("init actor error"),
+        };
+        (config_inner_addr,auth_addr)
     }
 
     pub fn gene_config_key(&self,data_id:&str,group:&str) -> ConfigKey {

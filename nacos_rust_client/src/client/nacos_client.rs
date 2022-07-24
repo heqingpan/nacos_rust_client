@@ -53,11 +53,11 @@ impl Actor for ActixSystemActor {
     }
 }
 
-type ActixSystemResultSender = std::sync::mpsc::Sender<ActixSystemResult>;
+type ActixSystemResultSender = std::sync::mpsc::SyncSender<ActixSystemResult>;
 
 #[derive(Message)]
 #[rtype(result="Result<ActixSystemResult,std::io::Error>")]
-enum ActixSystemCmd
+pub enum ActixSystemCmd
 {
     AuthActor(AuthActor,ActixSystemResultSender),
     ConfigInnerActor(ConfigInnerActor,ActixSystemResultSender),
