@@ -335,7 +335,7 @@ impl <T> ConfigListener for ConfigDefaultListener<T> {
     }
 
     fn change(&self,key:&ConfigKey,value:&str) -> () {
-        log::info!("ConfigDefaultListener change:{:?},{}",key,value);
+        log::debug!("ConfigDefaultListener change:{:?},{}",key,value);
         let content = self.content.clone();
         let  convert = self.convert.as_ref();
         if let Some(value) = convert(value){
