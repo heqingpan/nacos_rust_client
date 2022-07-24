@@ -840,17 +840,15 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
                 else{
                     let request_client = self.request_client.clone();
                     async move {
-                        (request_client.get_instance_list(&param).await,sender)
+                        (request_client.get_instance_list(&param).await,sender,param)
                     }
                     .into_actor(self)
-                    .map(|(res,sender),_,_|{
+                    .map(|(res,sender,param),act,ctx|{
                         match res {
                             Ok(list_result) => {
-                                if let Some(hosts) = list_result.hosts {
-                                    let list:Vec<Arc<Instance>> = hosts.into_iter()
-                                        .map(|e| Arc::new(e.to_instance()))
-                                        .filter(|e|e.weight>0.001f32)
-                                        .collect();
+                                let key = param.get_key();
+                                act.update_instances_and_notify(key, list_result);
+                                if let Some(list) = act.filter_instances(&param,ctx) {
                                     sender.send(NamingQueryResult::List(list));
                                     return;
                                 }
@@ -875,22 +873,20 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
                 else{
                     let request_client = self.request_client.clone();
                     async move {
-                        (request_client.get_instance_list(&param).await,sender)
+                        (request_client.get_instance_list(&param).await,sender,param)
                     }
                     .into_actor(self)
-                    .map(|(res,sender),_,_|{
+                    .map(|(res,sender,param),act,ctx|{
                         match res {
                             Ok(list_result) => {
-                                if let Some(hosts) = list_result.hosts {
-                                    let list:Vec<Arc<Instance>> = hosts.into_iter()
-                                        .map(|e| Arc::new(e.to_instance()))
-                                        .filter(|e|e.weight>0.001f32)
-                                        .collect();
+                                let key = param.get_key();
+                                act.update_instances_and_notify(key, list_result);
+                                if let Some(list) = act.filter_instances(&param,ctx) {
                                     let index = NamingUtils::select_by_weight_fn(&list, |e| (e.weight*1000f32) as u64); 
                                     if let Some(e) = list.get(index) {
                                         sender.send(NamingQueryResult::One(e.clone()));
+                                        return;
                                     }
-                                    return;
                                 }
                             },
                             Err(_) => {},
@@ -1030,15 +1026,14 @@ impl NamingClient {
         //let msg=NamingListenerCmd::AddHeartbeat(key.clone());
         //self.listener_addr.do_send(msg);
         let id=0u64;
-        /*
+        //如果之前没有数据，会触发加载数据
         let params = QueryInstanceListParams::new(&self.namespace_id,&key.group_name,&key.service_name,None,true);
         match self.query_instances(params).await {
             Ok(v) => {
-                listener.change(&key, &v,&v,&vec![]);
+                //listener.change(&key, &v,&v,&vec![]);
             },
             Err(_) => {},
         };
-         */
         let msg=NamingListenerCmd::Add(key,id,listener);
         self.listener_addr.do_send(msg);
         Ok(())
