@@ -3,5 +3,6 @@
 
 members = [
   "nacos_rust_client",
+  "nacos-tonic-discover",
   "examples",
 ]

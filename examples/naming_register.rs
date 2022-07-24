@@ -24,7 +24,7 @@ async fn main(){
         |instances,add_list,remove_list| {
             println!("service instances change,count:{},add count:{},remove count:{}",instances.len(),add_list.len(),remove_list.len());
         })));
-    client.subscribe(Box::new(default_listener)).await.unwrap();
+    client.subscribe(Box::new(default_listener.clone())).await.unwrap();
     let ip = local_ipaddress::get().unwrap();
     for i in 0..10{
         let port=10000+i;
