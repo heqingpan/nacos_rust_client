@@ -26,9 +26,11 @@ async fn main(){
         })));
     client.subscribe(Box::new(default_listener.clone())).await.unwrap();
     let ip = local_ipaddress::get().unwrap();
+    let service_name = "foo";
+    let group_name="DEFAULT_GROUP";
     for i in 0..10{
         let port=10000+i;
-        let instance = Instance::new(&ip,port,"foo","DEFAULT_GROUP","","",None);
+        let instance = Instance::new_simple(&ip,port,service_name,group_name);
         //注册
         client.register(instance);
         tokio::time::sleep(Duration::from_millis(1000)).await;
@@ -49,7 +51,9 @@ async fn main(){
 }
 
 async fn query_params(client:Arc<NamingClient>) -> anyhow::Result<()>{
-    let params = QueryInstanceListParams::new("","","foo",None,true);
+    let service_name = "foo";
+    let group_name="DEFAULT_GROUP";
+    let params = QueryInstanceListParams::new_simple(service_name,group_name);
     // 模拟每秒钟获取一次实例
     loop{
         //查询并按权重随机选择其中一个实例

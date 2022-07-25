@@ -447,6 +447,14 @@ impl QueryInstanceListParams{
         }
     }
 
+    pub fn new_simple(service_name:&str,group_name:&str) -> Self {
+        Self::new("",group_name,service_name,None,true)
+    }
+
+    pub fn new_by_serivce_key(key:&ServiceInstanceKey) -> Self{
+        Self::new_simple(&key.service_name,&key.group_name)
+    }
+
     pub fn get_key(&self) -> String {
         NamingUtils::get_group_and_service_name(&self.service_name, &self.group_name)
     }

@@ -7,6 +7,4 @@ fn main() {
         .file_descriptor_set_path(out_dir.join("helloworld_descriptor.bin"))
         .compile(&["proto/helloworld/helloworld.proto"], &["proto"])
         .unwrap();
-
-    tonic_build::compile_protos("proto/echo/echo.proto").unwrap();
 }

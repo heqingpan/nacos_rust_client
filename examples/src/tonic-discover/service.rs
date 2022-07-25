@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (tx, mut rx) = mpsc::unbounded_channel();
 
     for (ip,port) in &addrs {
-        let addr = format!("{}:{}","[::]",port).parse()?;
+        let addr = format!("{}:{}","0.0.0.0",port).parse()?;
         let tx = tx.clone();
         let greeter = MyGreeter::default();
         let serve = Server::builder()
