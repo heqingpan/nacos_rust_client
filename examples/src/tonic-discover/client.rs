@@ -33,10 +33,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     //build client by naming client select
     let param = QueryInstanceListParams::new_by_serivce_key(&service_key);
-    let instance=naming_client.select_instance(param).await?;
-    let mut client = GreeterClient::connect(format!("http://{}:{}",&instance.ip,&instance.port)).await?;
 
     for i in 5..10 {
+        let instance=naming_client.select_instance(param.clone()).await?;
+        let mut client = GreeterClient::connect(format!("http://{}:{}",&instance.ip,&instance.port)).await?;
         let request = tonic::Request::new(HelloRequest {
             name: format!("Tonic {} [client by naming client select]",i),
         });
