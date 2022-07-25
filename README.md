@@ -22,6 +22,8 @@ rust实现的nacos客户端。
 nacos_rust_client = "0.1"
 ```
 
+对tonic的适配可以使用 (nacos-tonic-discover)[https://crates.io/crates/nacos-tonic-discover]
+
 
 ## 例子
 
