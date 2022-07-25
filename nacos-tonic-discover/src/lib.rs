@@ -1,4 +1,4 @@
-use nacos_rust_client::{ActorCreate, ActixSystemCreateCmd, init_global_system_actor};
+use nacos_rust_client::{ActorCreate, ActixSystemCreateCmd, init_global_system_actor };
 use tonic::transport::Endpoint;
 use std::collections::HashMap;
 use std::str::FromStr;

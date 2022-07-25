@@ -1,4 +1,5 @@
 
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use crate::client::naming_client::InnerNamingListener;
@@ -103,7 +104,27 @@ impl Handler<ActixSystemCmd> for ActixSystemActor
 pub trait ActorCreate {
     fn create(&self) -> ();
 }
-type ActixSystemCreateResultSender = std::sync::mpsc::SyncSender<()>;
+
+pub struct ActorCreateWrap <T: actix::Actor,P> {
+    pub content:Arc<std::sync::Mutex<Option<Addr<T>>>>,
+    pub params: P,
+}
+
+impl <T: actix::Actor,P> ActorCreateWrap<T, P> {
+    pub fn get_value(&self) -> Option<Addr<T>> {
+        match self.content.lock().unwrap().as_ref() {
+            Some(c) => Some(c.clone()),
+            _ => None
+        }
+    }
+
+    pub fn set_value(&self,addr:Addr<T>)  {
+        let mut r = self.content.lock().unwrap();
+        *r = Some(addr);
+    }
+}
+
+type ActixSystemCreateResultSender = std::sync::mpsc::SyncSender<Box<dyn ActorCreate+Send>>;
 
 #[derive(Message)]
 #[rtype(result="Result<(),std::io::Error>")]
@@ -118,10 +139,30 @@ impl Handler<ActixSystemCreateCmd> for ActixSystemActor
         match msg {
             ActixSystemCreateCmd::ActorInit(t,tx) => {
                 t.create();
-                tx.send(()).unwrap();
+                tx.send(t).unwrap();
             },
         };
         Ok(())
+    }
+}
+
+#[derive(Message)]
+#[rtype(result="Result<Box<dyn ActorCreate+Send>,std::io::Error>")]
+pub enum ActixSystemCreateAsyncCmd{
+    ActorInit(Box<dyn ActorCreate+Send>)
+}
+
+impl Handler<ActixSystemCreateAsyncCmd> for ActixSystemActor 
+{
+    type Result = Result<Box<dyn ActorCreate+Send>,std::io::Error>;
+    fn handle(&mut self,msg:ActixSystemCreateAsyncCmd,ctx:&mut Context<Self>) -> Self::Result {
+        let v = match msg {
+            ActixSystemCreateAsyncCmd::ActorInit(v) => {
+                v.create();
+                v
+            },
+        };
+        Ok(v)
     }
 }
 
