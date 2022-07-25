@@ -995,15 +995,18 @@ impl NamingClient {
         addrs
     }
 
-    pub fn register(&self,instance:Instance) {
+    pub fn register(&self,mut instance:Instance) {
+        instance.namespace_id=self.namespace_id.clone();
         self.register.do_send(NamingRegisterCmd::Register(instance));
     }
 
-    pub fn unregister(&self,instance:Instance) {
+    pub fn unregister(&self,mut instance:Instance) {
+        instance.namespace_id=self.namespace_id.clone();
         self.register.do_send(NamingRegisterCmd::Remove(instance));
     }
 
-    pub async fn query_instances(&self,params:QueryInstanceListParams) -> anyhow::Result<Vec<Arc<Instance>>>{
+    pub async fn query_instances(&self,mut params:QueryInstanceListParams) -> anyhow::Result<Vec<Arc<Instance>>>{
+        params.namespace_id=self.namespace_id.clone();
         let (tx,rx) = tokio::sync::oneshot::channel();
         self.listener_addr.do_send(NamingQueryCmd::QueryList(params,tx));
         match rx.await? {
@@ -1016,7 +1019,8 @@ impl NamingClient {
         }
     }
 
-    pub async fn select_instance(&self,params:QueryInstanceListParams) -> anyhow::Result<Arc<Instance>>{
+    pub async fn select_instance(&self,mut params:QueryInstanceListParams) -> anyhow::Result<Arc<Instance>>{
+        params.namespace_id=self.namespace_id.clone();
         let (tx,rx) = tokio::sync::oneshot::channel();
         self.listener_addr.do_send(NamingQueryCmd::Select(params,tx));
         match rx.await? {
