@@ -161,6 +161,10 @@ pub struct Instance {
 
 impl Instance {
 
+    pub fn new_simple(ip:&str,port:u32,service_name:&str,group_name:&str)  -> Self {
+        Self::new(ip,port,service_name,group_name,"","",None)
+    }
+
     pub fn new(ip:&str,port:u32,service_name:&str,group_name:&str,cluster_name:&str,namespace_id:&str,metadata:Option<HashMap<String,String>>) -> Self{
         let cluster_name = if cluster_name.len()==0 {"DEFAULT".to_owned()} else{cluster_name.to_owned()};
         let group_name = if group_name.len()==0 {"DEFAULT_GROUP".to_owned()} else{group_name.to_owned()};
