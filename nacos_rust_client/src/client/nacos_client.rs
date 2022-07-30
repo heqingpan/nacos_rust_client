@@ -2,7 +2,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use crate::client::naming_client::InnerNamingListener;
+use crate::client::naming_client::{InnerNamingListener,InnerNamingRegister};
 use crate::client::naming_client::UdpWorker;
 use crate::client::auth::AuthActor;
 use super::{HostInfo, config_client::ConfigInnerActor};
@@ -64,6 +64,7 @@ pub enum ActixSystemCmd
     ConfigInnerActor(ConfigInnerActor,ActixSystemResultSender),
     UdpWorker(UdpWorker,ActixSystemResultSender),
     InnerNamingListener(InnerNamingListener,ActixSystemResultSender),
+    InnerNamingRegister(InnerNamingRegister,ActixSystemResultSender),
 }
 
 pub enum ActixSystemResult {
@@ -72,6 +73,7 @@ pub enum ActixSystemResult {
     ConfigInnerActor(Addr<ConfigInnerActor>),
     UdpWorker(Addr<UdpWorker>),
     InnerNamingListener(Addr<InnerNamingListener>),
+    InnerNamingRegister(Addr<InnerNamingRegister>),
 }
 
 impl Handler<ActixSystemCmd> for ActixSystemActor 
@@ -95,6 +97,10 @@ impl Handler<ActixSystemCmd> for ActixSystemActor
             ActixSystemCmd::InnerNamingListener(actor, tx) => {
                 let addr = actor.start();
                 tx.send(ActixSystemResult::InnerNamingListener(addr));
+            },
+            ActixSystemCmd::InnerNamingRegister(actor, tx) => {
+                let addr = actor.start();
+                tx.send(ActixSystemResult::InnerNamingRegister(addr));
             },
         }
         Ok(ActixSystemResult::None)

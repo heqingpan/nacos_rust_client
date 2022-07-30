@@ -1,3 +1,6 @@
+use crate::client::nacos_client::ActixSystemCmd;
+use crate::client::nacos_client::ActixSystemResult;
+use crate::init_global_system_actor;
 use crate::client::auth::AuthActor;
 use crate::client::AuthInfo;
 use crate::client::ServerEndpointInfo;
@@ -46,7 +49,7 @@ impl NamingClient {
             hosts:vec![host]
         });
         let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint);
-        let addrs=Self::init_register(namespace_id.clone(),current_ip.clone(),request_client,None);
+        let addrs=Self::init_register2(namespace_id.clone(),current_ip.clone(),request_client,None);
         Arc::new(Self{
             namespace_id,
             register:addrs.0,
@@ -102,6 +105,50 @@ impl NamingClient {
         });
         let addrs = rx.recv().unwrap();
         addrs
+    }
+
+    fn init_register2(namespace_id:String,client_ip:String,mut request_client:InnerNamingRequestClient,auth_info:Option<AuthInfo>) 
+        -> (Addr<InnerNamingRegister>,Addr<InnerNamingListener>) {
+        let system_addr =  init_global_system_actor();
+        let mut endpoint=request_client.endpoints.clone();
+        let actor = AuthActor::new(endpoint,auth_info);
+        let (tx,rx) = std::sync::mpsc::sync_channel(1);
+        let msg = ActixSystemCmd::AuthActor(actor,tx);
+        system_addr.do_send(msg);
+        let auth_addr= match rx.recv().unwrap() {
+            ActixSystemResult::AuthActorAddr(auth_addr) => auth_addr,
+            _ => panic!("init actor error"),
+        };
+        request_client.set_auth_addr(auth_addr);
+
+        let actor = InnerNamingRegister::new(request_client.clone());
+        let (tx,rx) = std::sync::mpsc::sync_channel(1);
+        let msg = ActixSystemCmd::InnerNamingRegister(actor,tx);
+        system_addr.do_send(msg);
+        let register_addr= match rx.recv().unwrap() {
+            ActixSystemResult::InnerNamingRegister(addr) => addr,
+            _ => panic!("init actor error"),
+        };
+
+        let actor = UdpWorker::new(None);
+        let (tx,rx) = std::sync::mpsc::sync_channel(1);
+        let msg = ActixSystemCmd::UdpWorker(actor,tx);
+        system_addr.do_send(msg);
+        let udp_work_addr= match rx.recv().unwrap() {
+            ActixSystemResult::UdpWorker(addr) => addr,
+            _ => panic!("init actor error"),
+        };
+
+        let actor = InnerNamingListener::new(&namespace_id,&client_ip,0, request_client,udp_work_addr);
+        let (tx,rx) = std::sync::mpsc::sync_channel(1);
+        let msg = ActixSystemCmd::InnerNamingListener(actor,tx);
+        system_addr.do_send(msg);
+        let listener_addr= match rx.recv().unwrap() {
+            ActixSystemResult::InnerNamingListener(addr) => addr,
+            _ => panic!("init actor error"),
+        };
+        (register_addr,listener_addr)
+
     }
 
     pub fn register(&self,mut instance:Instance) {
