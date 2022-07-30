@@ -160,7 +160,13 @@ async fn main() {
     //获取
     let v=config_client.get_config(&key).await.unwrap();
     println!("{:?},{}",&key,v);
+    check_listener_value().await;
+    nacos_rust_client::close_current_system();
+}
 
+async fn check_listener_value(){
+    //获取全局最后一次创建的config_client
+    let config_client = nacos_rust_client::get_last_config_client().unwrap();
     let mut foo_obj= Foo {
         name:"foo name".to_owned(),
         number:0u64,
@@ -194,7 +200,6 @@ async fn main() {
         assert_eq!(foo_obj_from_listener.number,foo_obj.number);
         assert_eq!(foo_obj_from_listener.number,i);
     }
-
 }
 ```
 
@@ -241,10 +246,10 @@ async fn main(){
     }
 
     //tokio::spawn(async{query_params2().await.unwrap();});
-    let client2 = client.clone();
+    //let client2 = client.clone();
     tokio::spawn(
         async move {
-            query_params(client2.clone()).await;
+            query_params().await;
         }
     );
 
@@ -254,7 +259,9 @@ async fn main(){
     println!("n:{}",&client.namespace_id);
 }
 
-async fn query_params(client:Arc<NamingClient>) -> anyhow::Result<()>{
+async fn query_params() -> anyhow::Result<()>{
+    //get client from global 
+    let client = nacos_rust_client::get_last_naming_client().unwrap();
     let service_name = "foo";
     let group_name="DEFAULT_GROUP";
     let params = QueryInstanceListParams::new_simple(service_name,group_name);
@@ -273,6 +280,7 @@ async fn query_params(client:Arc<NamingClient>) -> anyhow::Result<()>{
     }
     Ok(())
 }
+
 
 ```
 

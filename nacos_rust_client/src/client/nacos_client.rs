@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use crate::client::naming_client::{InnerNamingListener,InnerNamingRegister};
 use crate::client::naming_client::UdpWorker;
 use crate::client::auth::AuthActor;
+use super::utils;
 use super::{HostInfo, config_client::ConfigInnerActor};
 use actix::{prelude::*, Context};
 
@@ -114,6 +115,7 @@ impl Handler<ActixSystemCmd> for ActixSystemActor
             ActixSystemCmd::Close => {
                 if let Some(naming_client) = &self.last_naming_client {
                     naming_client.droping();
+                    std::thread::sleep(utils::ms(100));
                 }
                 self.last_config_client=None;
                 self.last_naming_client=None;
