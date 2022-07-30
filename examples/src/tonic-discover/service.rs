@@ -6,12 +6,6 @@ use tonic::{transport::Server, Request, Response, Status};
 use examples::proto::hello::greeter_server::{Greeter, GreeterServer};
 use examples::proto::hello::{HelloReply, HelloRequest};
 
-/*
-pub mod hello_world {
-    tonic::include_proto!("helloworld");
-}
- */
-
 #[derive(Default)]
 pub struct MyGreeter {}
 

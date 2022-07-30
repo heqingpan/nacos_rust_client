@@ -5,12 +5,6 @@ use nacos_rust_client::client::naming_client::NamingClient;
 use examples::proto::hello::greeter_client::GreeterClient;
 use examples::proto::hello::HelloRequest;
 
-/*
-pub mod hello_world {
-    tonic::include_proto!("helloworld");
-}
- */
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let namespace_id = "public".to_owned(); //default teant
