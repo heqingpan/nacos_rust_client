@@ -73,6 +73,7 @@ pub enum ActixSystemCmd
     UdpWorker(UdpWorker,ActixSystemResultSender),
     InnerNamingListener(InnerNamingListener,ActixSystemResultSender),
     InnerNamingRegister(InnerNamingRegister,ActixSystemResultSender),
+    Close,
 }
 
 pub enum ActixSystemResult {
@@ -109,6 +110,10 @@ impl Handler<ActixSystemCmd> for ActixSystemActor
             ActixSystemCmd::InnerNamingRegister(actor, tx) => {
                 let addr = actor.start();
                 tx.send(ActixSystemResult::InnerNamingRegister(addr));
+            },
+            ActixSystemCmd::Close => {
+                ctx.stop();
+                System::current().stop();
             },
         }
         Ok(ActixSystemResult::None)
@@ -283,6 +288,14 @@ pub fn init_global_system_actor() -> Addr<ActixSystemActor> {
         let addr = init_register();
         set_global_system_actor(addr.clone());
         return addr;
+    }
+}
+
+pub fn close_global_system_actor()  {
+    let mut r = ACTIX_SYSTEM.lock().unwrap();
+    if let Some(addr) = &*r {
+        addr.do_send(ActixSystemCmd::Close);
+        *r = None;
     }
 }
 
