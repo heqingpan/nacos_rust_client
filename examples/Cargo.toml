@@ -38,4 +38,5 @@ path = "src/tonic-discover/client.rs"
 
 
 [build-dependencies]
-tonic-build = "0.7"
+#windows 依赖 cmake
+#tonic-build = "0.7"
