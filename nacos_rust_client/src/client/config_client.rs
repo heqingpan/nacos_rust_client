@@ -7,8 +7,8 @@ use std::{collections::HashMap,time::Duration};
 use anyhow::anyhow;
 use actix::prelude::*;
 use super::auth::{AuthActor, AuthCmd};
-use super::nacos_client::ActixSystemActor;
-use super::{now_millis, AuthInfo};
+use super::nacos_client::{ActixSystemActor, ActixSystemActorSetCmd};
+use super::{now_millis, AuthInfo, utils};
 
 use super::{HostInfo,ServerEndpointInfo, TokenInfo};
 use super::get_md5;
@@ -142,6 +142,7 @@ pub struct ConfigClient{
 impl Drop for ConfigClient {
     fn drop(&mut self){
         self.config_inner_addr.do_send(ConfigInnerCmd::Close);
+        //std::thread::sleep(utils::ms(500));
     }
 }
 
@@ -349,15 +350,18 @@ impl <T> ConfigListener for ConfigDefaultListener<T> {
 }
 
 impl ConfigClient {
-    pub fn new(host:HostInfo,tenant:String) -> Self {
+    pub fn new(host:HostInfo,tenant:String) -> Arc<Self> {
         let mut request_client = ConfigInnerRequestClient::new(host.clone());
         let (config_inner_addr,_) = Self::init_register2(request_client.clone(),None);
         //request_client.set_auth_addr(auth_addr);
-        Self{
+        let r=Arc::new(Self{
             tenant,
             request_client,
             config_inner_addr
-        }
+        });
+        let system_addr = init_global_system_actor();
+        system_addr.do_send(ActixSystemActorSetCmd::LastConfigClient(r.clone()));
+        r
     }
 
     pub fn new_with_addrs(addrs:&str,tenant:String,auth_info:Option<AuthInfo>) -> Arc<Self> {
@@ -365,11 +369,14 @@ impl ConfigClient {
         let mut request_client = ConfigInnerRequestClient::new_with_endpoint(endpoint);
         let (config_inner_addr,auth_addr) = Self::init_register2(request_client.clone(),auth_info);
         request_client.set_auth_addr(auth_addr);
-        Arc::new(Self{
+        let r=Arc::new(Self{
             tenant,
             request_client,
             config_inner_addr
-        })
+        });
+        let system_addr = init_global_system_actor();
+        system_addr.do_send(ActixSystemActorSetCmd::LastConfigClient(r.clone()));
+        r
     }
 
     fn init_register(mut request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>) -> (Addr<ConfigInnerActor>,Addr<AuthActor>) {

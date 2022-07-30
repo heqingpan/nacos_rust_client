@@ -1,3 +1,4 @@
+use crate::client::nacos_client::ActixSystemActorSetCmd;
 use crate::client::nacos_client::ActixSystemCmd;
 use crate::client::nacos_client::ActixSystemResult;
 use crate::init_global_system_actor;
@@ -51,12 +52,15 @@ impl NamingClient {
         });
         let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint);
         let addrs=Self::init_register2(namespace_id.clone(),current_ip.clone(),request_client,None);
-        Arc::new(Self{
+        let r=Arc::new(Self{
             namespace_id,
             register:addrs.0,
             listener_addr:addrs.1,
             current_ip,
-        })
+        });
+        let system_addr = init_global_system_actor();
+        system_addr.do_send(ActixSystemActorSetCmd::LastNamingClient(r.clone()));
+        r
     }
 
     pub fn new_with_addrs(addrs:&str,namespace_id:String,auth_info:Option<AuthInfo>) -> Arc<Self> {
@@ -68,13 +72,16 @@ impl NamingClient {
                 local_ipaddress::get().unwrap()
             },
         };
-        let addrs=Self::init_register(namespace_id.clone(),current_ip.clone(),request_client,auth_info);
-        Arc::new(Self{
+        let addrs=Self::init_register2(namespace_id.clone(),current_ip.clone(),request_client,auth_info);
+        let r = Arc::new(Self{
             namespace_id,
             register:addrs.0,
             listener_addr:addrs.1,
             current_ip,
-        })
+        });
+        let system_addr = init_global_system_actor();
+        system_addr.do_send(ActixSystemActorSetCmd::LastNamingClient(r.clone()));
+        r
     }
 
     fn init_register(namespace_id:String,client_ip:String,mut request_client:InnerNamingRequestClient,auth_info:Option<AuthInfo>) -> (Addr<InnerNamingRegister>,Addr<InnerNamingListener>) {

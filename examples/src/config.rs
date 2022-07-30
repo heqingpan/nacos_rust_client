@@ -32,7 +32,12 @@ async fn main() {
     //获取
     let v=config_client.get_config(&key).await.unwrap();
     println!("{:?},{}",&key,v);
+    check_listener_value().await;
+}
 
+async fn check_listener_value(){
+    //获取全局最后一次创建的config_client
+    let config_client = nacos_rust_client::get_last_config_client().unwrap();
     let mut foo_obj= Foo {
         name:"foo name".to_owned(),
         number:0u64,
@@ -66,5 +71,4 @@ async fn main() {
         assert_eq!(foo_obj_from_listener.number,foo_obj.number);
         assert_eq!(foo_obj_from_listener.number,i);
     }
-
 }

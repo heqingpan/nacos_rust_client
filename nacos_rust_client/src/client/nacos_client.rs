@@ -1,4 +1,6 @@
 
+use crate::client::ConfigClient;
+use crate::client::NamingClient;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -38,11 +40,17 @@ impl NacosClient {
 }
 
 
-pub struct ActixSystemActor {}
+pub struct ActixSystemActor {
+    last_config_client: Option<Arc<ConfigClient>>,
+    last_naming_client: Option<Arc<NamingClient>>,
+}
 
 impl ActixSystemActor {
     pub fn new() -> Self {
-        Self{}
+        Self{
+            last_config_client:None,
+            last_naming_client:None,
+        }
     }
 }
 
@@ -172,6 +180,87 @@ impl Handler<ActixSystemCreateAsyncCmd> for ActixSystemActor
     }
 }
 
+#[derive(Message)]
+#[rtype(result="Result<(),std::io::Error>")]
+pub enum ActixSystemActorSetCmd{
+    LastConfigClient(Arc<ConfigClient>),
+    LastNamingClient(Arc<NamingClient>),
+}
+
+impl Handler<ActixSystemActorSetCmd> for ActixSystemActor 
+{
+    type Result = Result<(),std::io::Error>;
+    fn handle(&mut self,msg:ActixSystemActorSetCmd,ctx:&mut Context<Self>) -> Self::Result {
+        match msg {
+            ActixSystemActorSetCmd::LastConfigClient(config_client) => {
+                self.last_config_client = Some(config_client);
+            },
+            ActixSystemActorSetCmd::LastNamingClient(naming_client) => {
+                self.last_naming_client = Some(naming_client);
+            },
+        }
+        Ok(())
+    }
+}
+
+type ActixSystemActorQueryResultSender = std::sync::mpsc::SyncSender<Box<ActixSystemActorQueryResult>>;
+
+
+#[derive(Message)]
+#[rtype(result="Result<ActixSystemActorQueryResult,std::io::Error>")]
+pub enum ActixSystemActorQueryCmd{
+    QueryLastConfigClient,
+    QueryLastNamingClient,
+    SyncQueryLastConfigClient(ActixSystemActorQueryResultSender),
+    SyncQueryLastNamingClient(ActixSystemActorQueryResultSender),
+}
+
+pub enum ActixSystemActorQueryResult{
+    None,
+    LastConfigClient(Arc<ConfigClient>),
+    LastNamingClient(Arc<NamingClient>),
+}
+
+impl Handler<ActixSystemActorQueryCmd> for ActixSystemActor 
+{
+    type Result = Result<ActixSystemActorQueryResult,std::io::Error>;
+    fn handle(&mut self,msg:ActixSystemActorQueryCmd,ctx:&mut Context<Self>) -> Self::Result {
+        match msg {
+            ActixSystemActorQueryCmd::QueryLastConfigClient => {
+                if let Some(client) = &self.last_config_client{
+                    return Ok(ActixSystemActorQueryResult::LastConfigClient(client.clone()));
+                }
+            },
+            ActixSystemActorQueryCmd::QueryLastNamingClient => {
+                if let Some(client) = &self.last_naming_client{
+                    return Ok(ActixSystemActorQueryResult::LastNamingClient(client.clone()));
+                }
+            },
+            ActixSystemActorQueryCmd::SyncQueryLastConfigClient(sender) => {
+                if let Some(client) = &self.last_config_client{
+                    sender.send(Box::new(ActixSystemActorQueryResult::LastConfigClient(client.clone()))).unwrap();
+                }
+                else{
+                    sender.send(Box::new(ActixSystemActorQueryResult::None)).unwrap();
+                }
+            },
+            ActixSystemActorQueryCmd::SyncQueryLastNamingClient(sender) => {
+                if let Some(client) = &self.last_naming_client{
+                    sender.send(Box::new(ActixSystemActorQueryResult::LastNamingClient(client.clone()))).unwrap();
+                }
+                else{
+                    sender.send(Box::new(ActixSystemActorQueryResult::None)).unwrap();
+                }
+            },
+        }
+        Ok(ActixSystemActorQueryResult::None)
+    }
+}
+
+
+
+
+
 lazy_static::lazy_static! {
     static ref ACTIX_SYSTEM: Mutex<Option<Addr<ActixSystemActor>>> =  Mutex::new(None);
 }
@@ -195,6 +284,35 @@ pub fn init_global_system_actor() -> Addr<ActixSystemActor> {
         set_global_system_actor(addr.clone());
         return addr;
     }
+}
+
+pub fn get_last_config_client() -> Option<Arc<ConfigClient>> {
+    if let Some(actor) = get_global_system_actor() {
+        let (tx,rx) = std::sync::mpsc::sync_channel(1);
+        actor.do_send(ActixSystemActorQueryCmd::SyncQueryLastConfigClient(tx));
+        match *rx.recv().unwrap() {
+            ActixSystemActorQueryResult::LastConfigClient(client) => {
+                return Some(client);
+            },
+            _ => {},
+        }
+    }
+    None
+}
+
+pub fn get_last_naming_client() -> Option<Arc<NamingClient>> {
+    if let Some(actor) = get_global_system_actor() {
+        let (tx,rx) = std::sync::mpsc::sync_channel(1);
+        actor.do_send(ActixSystemActorQueryCmd::SyncQueryLastNamingClient(tx));
+        match *rx.recv().unwrap() {
+            ActixSystemActorQueryResult::LastNamingClient(client) => {
+                return Some(client);
+            },
+            _ => {
+            },
+        }
+    }
+    None
 }
 
 fn init_register() -> Addr<ActixSystemActor> {

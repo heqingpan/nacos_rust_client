@@ -37,10 +37,10 @@ async fn main(){
     }
 
     //tokio::spawn(async{query_params2().await.unwrap();});
-    let client2 = client.clone();
+    //let client2 = client.clone();
     tokio::spawn(
         async move {
-            query_params(client2.clone()).await;
+            query_params().await;
         }
     );
 
@@ -50,7 +50,9 @@ async fn main(){
     println!("n:{}",&client.namespace_id);
 }
 
-async fn query_params(client:Arc<NamingClient>) -> anyhow::Result<()>{
+async fn query_params() -> anyhow::Result<()>{
+    //get client from global 
+    let client = nacos_rust_client::get_last_naming_client().unwrap();
     let service_name = "foo";
     let group_name="DEFAULT_GROUP";
     let params = QueryInstanceListParams::new_simple(service_name,group_name);

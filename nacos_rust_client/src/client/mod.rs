@@ -14,6 +14,7 @@ use serde::{Serialize, Deserialize};
 
 pub use self::nacos_client::NacosClient;
 pub use self::config_client::ConfigClient;
+pub use self::naming_client::NamingClient;
 
 #[derive(Debug, Clone)]
 pub struct HostInfo {
