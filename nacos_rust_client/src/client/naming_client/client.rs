@@ -29,6 +29,7 @@ impl Drop for NamingClient {
     fn drop(&mut self) { 
         log::info!("NamingClient droping");
         self.register.do_send(NamingRegisterCmd::Close());
+        self.listener_addr.do_send(NamingListenerCmd::Close);
         std::thread::sleep(utils::ms(500));
     }
 }
@@ -81,11 +82,15 @@ impl NamingClient {
             let addrs = rt.block_on(async {
                 let auth_addr = AuthActor::new(endpoint,auth_info).start();
                 request_client.set_auth_addr(auth_addr);
-                let socket=UdpSocket::bind("0.0.0.0:0").await.unwrap();
-                let port = socket.local_addr().unwrap().port();
+                //let socket=UdpSocket::bind("0.0.0.0:0").await.unwrap();
+                //let port = socket.local_addr().unwrap().port();
+                let port = 0;
+                //let udp_addr = UdpWorker::new(None).start();
+                //let listener_addr = InnerNamingListener::new(&namespace_id,&client_ip,port, new_request_client,udp_addr).start();
                 let new_request_client = request_client.clone();
                 let listener_addr=InnerNamingListener::create(move |ctx| {
-                    let udp_addr = UdpWorker::new_with_socket(socket, ctx.address()).start();
+                    //let udp_addr = UdpWorker::new_with_socket(socket, Some(ctx.address())).start();
+                    let udp_addr = UdpWorker::new(Some(ctx.address())).start();
                     InnerNamingListener::new(&namespace_id,&client_ip,port, new_request_client,udp_addr) 
                 });
                 (InnerNamingRegister::new(request_client).start(),

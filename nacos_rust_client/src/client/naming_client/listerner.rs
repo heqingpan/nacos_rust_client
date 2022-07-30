@@ -13,6 +13,7 @@ use crate::client::naming_client::ServiceInstanceKey;
 use std::sync::Arc;
 use actix::prelude::*;
 
+use super::udp_actor::{InitLocalAddr,UdpWorkerCmd};
 use super::{Instance, QueryInstanceListParams};
 
 type InstanceListenerValue= Vec<Arc<Instance>>;
@@ -234,6 +235,12 @@ impl InnerNamingListener {
             act.hb(ctx);
         });
     }
+
+    pub fn init_udp_port(&self,ctx:&mut actix::Context<Self>) {
+        if self.udp_port ==0 {
+            self.udp_addr.do_send(UdpWorkerCmd::QueryUdpPort);
+        }
+    }
 }
 
 impl Actor for InnerNamingListener {
@@ -241,6 +248,7 @@ impl Actor for InnerNamingListener {
 
     fn started(&mut self,ctx: &mut Self::Context) {
         log::info!(" InnerNamingListener started");
+        self.init_udp_port(ctx);
         self.hb(ctx);
     }
 }
@@ -252,6 +260,7 @@ pub enum NamingListenerCmd {
     Remove(ServiceInstanceKey,u64),
     AddHeartbeat(ServiceInstanceKey),
     Heartbeat(String,u64),
+    Close,
 }
 
 impl Handler<NamingListenerCmd> for InnerNamingListener {
@@ -331,6 +340,11 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                     self.query_instance(key, ctx);
                 }
             },
+            NamingListenerCmd::Close => {
+                self.udp_addr.do_send(UdpWorkerCmd::Close);
+                log::info!("InnerNamingListener close");
+                ctx.stop();
+            },
         };
         Ok(())
     }
@@ -362,6 +376,15 @@ impl Handler<UdpDataCmd> for InnerNamingListener {
             //update
             self.update_instances_and_notify(key,result);
         }
+        Ok(())
+    }
+}
+
+impl Handler<InitLocalAddr> for InnerNamingListener {
+    type Result = Result<(),std::io::Error>;
+    fn handle(&mut self, msg: InitLocalAddr, ctx: &mut Self::Context) -> Self::Result {
+        log::info!("InnerNamingListener init udp port by InitLocalAddr:{},oldport:{}",&msg.port,&self.udp_port);
+        self.udp_port = msg.port;
         Ok(())
     }
 }
@@ -453,3 +476,4 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
         Ok(NamingQueryResult::None)
     }
 }
+

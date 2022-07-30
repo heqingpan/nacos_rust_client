@@ -91,6 +91,7 @@ impl Actor for InnerNamingRegister {
     }
 }
 
+
 #[derive(Debug,Message)]
 #[rtype(result = "Result<(),std::io::Error>")]
 pub enum NamingRegisterCmd {
