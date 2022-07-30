@@ -112,6 +112,11 @@ impl Handler<ActixSystemCmd> for ActixSystemActor
                 tx.send(ActixSystemResult::InnerNamingRegister(addr));
             },
             ActixSystemCmd::Close => {
+                if let Some(naming_client) = &self.last_naming_client {
+                    naming_client.droping();
+                }
+                self.last_config_client=None;
+                self.last_naming_client=None;
                 ctx.stop();
                 System::current().stop();
             },

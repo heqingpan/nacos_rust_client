@@ -24,17 +24,15 @@ use super::{InnerNamingRegister,InnerNamingListener
 
 pub struct NamingClient{
     pub namespace_id:String,
-    register:Addr<InnerNamingRegister>,
-    listener_addr:Addr<InnerNamingListener>,
+    pub(crate) register:Addr<InnerNamingRegister>,
+    pub(crate) listener_addr:Addr<InnerNamingListener>,
     pub current_ip:String
 }
 
 impl Drop for NamingClient {
 
     fn drop(&mut self) { 
-        log::info!("NamingClient droping");
-        self.register.do_send(NamingRegisterCmd::Close());
-        self.listener_addr.do_send(NamingListenerCmd::Close);
+        self.droping();
         std::thread::sleep(utils::ms(500));
     }
 }
@@ -157,6 +155,12 @@ impl NamingClient {
         };
         (register_addr,listener_addr)
 
+    }
+
+    pub(crate) fn droping(&self){
+        log::info!("NamingClient droping");
+        self.register.do_send(NamingRegisterCmd::Close());
+        self.listener_addr.do_send(NamingListenerCmd::Close);
     }
 
     pub fn register(&self,mut instance:Instance) {
