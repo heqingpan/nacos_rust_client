@@ -33,7 +33,7 @@ async fn main() {
     let v=config_client.get_config(&key).await.unwrap();
     println!("{:?},{}",&key,v);
     check_listener_value().await;
-    nacos_rust_client::quit();
+    nacos_rust_client::clear_current_system();
 }
 
 async fn check_listener_value(){
