@@ -15,6 +15,7 @@ use super::NamingQueryCmd;
 use super::NamingQueryResult;
 use super::QueryInstanceListParams;
 use super::ServiceInstanceKey;
+use super::udp_actor::UdpWorkerCmd;
 use super::{InnerNamingRegister,InnerNamingListener
     ,NamingListenerCmd,NamingRegisterCmd,InnerNamingRequestClient
     ,UdpWorker

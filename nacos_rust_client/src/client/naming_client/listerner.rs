@@ -236,7 +236,8 @@ impl InnerNamingListener {
         });
     }
 
-    pub fn init_udp_port(&self,ctx:&mut actix::Context<Self>) {
+    pub fn init_udp_info(&self,ctx:&mut actix::Context<Self>) {
+        self.udp_addr.do_send(UdpWorkerCmd::SetListenerAddr(ctx.address()));
         if self.udp_port ==0 {
             self.udp_addr.do_send(UdpWorkerCmd::QueryUdpPort);
         }
@@ -248,7 +249,7 @@ impl Actor for InnerNamingListener {
 
     fn started(&mut self,ctx: &mut Self::Context) {
         log::info!(" InnerNamingListener started");
-        self.init_udp_port(ctx);
+        self.init_udp_info(ctx);
         self.hb(ctx);
     }
 }
