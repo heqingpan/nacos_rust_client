@@ -6,23 +6,114 @@ rust实现的nacos客户端。
 
 目前暂时只支持`1.x`版http协议，`2.x`服务兼容`1.x`协议。
 
-1. 支持配置中心的推送、获取、监听
-2. 支持注册中心的服务实例注册(自动维护心跳)、服务实例获取(自动监听缓存实例列表)
-
-
-## 实现方式
-
-使用 actix + tokio 实现
+1. 使用 actix + tokio 实现。
+2. 支持配置中心的推送、获取、监听。
+3. 支持注册中心的服务实例注册(自动维护心跳)、服务实例获取(自动监听缓存实例列表)。
+4. 创建的客户端后台处理，都放在同一个actix环境线程;高性能，不会有线程膨胀，稳定可控。
 
 
 ## 使用方式
 
+首先加入引用
+
 ```toml
 [dependencies]
-nacos_rust_client = "0.1"
+nacos_rust_client = "0.2"
 ```
 
-对tonic的适配可以使用 (nacos-tonic-discover)[https://crates.io/crates/nacos-tonic-discover]
+### 使用配置中心
+
+1. 创建客户端
+
+使用`ConfigClient::new_with_addrs`创建配置客户端，支持设置集群地址列表，支持验权校验.
+
+```rust
+use nacos_rust_client::client::config_client::ConfigClient;
+//...
+let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,auth_info);
+```
+
+创建客户端,后会把客户端的一个引用加入到全局对象,可以通过 `get_last_config_client`获取.
+
+```rust
+let config_client = nacos_rust_client::get_last_config_client().unwrap();
+```
+
+2. 设置获取配置信息
+
+```rust
+let key = ConfigKey::new("data_id","group_name","" /*tenant_id*/);
+config_client.set_config(&key, "config_value").await.unwrap();
+let v=config_client.get_config(&key).await.unwrap();
+```
+
+3. 配置监听器
+
+实时的接收服务端的变更推送，更新监听器的内容；用户应用配置动态下发。
+
+```rust
+#[derive(Debug,Serialize,Deserialize,Default,Clone)]
+pub struct Foo {
+    pub name: String,
+    pub number: u64,
+}
+//...
+let foo_config_obj_listener = Box::new(ConfigDefaultListener::new(key.clone(),Arc::new(|s|{
+    //字符串反序列化为对象，如:serde_json::from_str::<T>(s)
+    Some(serde_json::from_str::<Foo>(s).unwrap())
+})));
+config_client.subscribe(foo_config_obj_listener.clone()).await;
+let foo_obj_from_listener = foo_config_obj_listener.get_value().unwrap();
+```
+
+### 使用注册中心
+
+1. 创建客户端
+
+使用`NamingClient::new_with_addrs`创建配置客户端，支持设置集群地址列表，支持验权校验.
+
+```rust
+use nacos_rust_client::client::naming_client::NamingClient;
+//...
+let naming_client = NamingClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",namespace_id,auth_info);
+```
+
+创建客户端,后会把客户端的一个引用加入到全局对象,可以通过 `get_last_naming_client`获取.
+
+```rust
+let naming_client = nacos_rust_client::get_last_naming_client().unwrap();
+```
+
+2. 注册服务实例
+
+只要调拨一次注册实例，客户端会自动在后面维持心跳保活。
+
+```rust
+let instance = Instance::new_simple(&ip,port,service_name,group_name);
+naming_client.register(instance);
+```
+
+3. 服务地址路由
+
+查询指定服务的地址列表
+
+```rust
+let params = QueryInstanceListParams::new_simple(service_name,group_name);
+let instance_list_result=client.query_instances(params).await;
+```
+
+查询指定服务的地址列表并按重选中一个地址做服务调用。
+
+```rust
+let params = QueryInstanceListParams::new_simple(service_name,group_name);
+let instance_result=client.select_instance(params).await;
+```
+
+如果要在tonic中使用服务地址选择,可以使用对tonic的适配 (nacos-tonic-discover)[https://crates.io/crates/nacos-tonic-discover]
+
+### 其它
+
+应用结束时，nacos_rust_client可能还有后台的调用，可以调用`nacos_rust_client::close_current_system()` 优雅退出nacos_rust_client后台线程。
 
 
 ## 例子
