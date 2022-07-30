@@ -2,12 +2,14 @@ use std::time::Duration;
 use nacos_rust_client::client::naming_client::{ServiceInstanceKey, QueryInstanceListParams};
 use nacos_tonic_discover::TonicDiscoverFactory;
 use nacos_rust_client::client::naming_client::NamingClient;
-use hello_world::greeter_client::GreeterClient;
-use hello_world::HelloRequest;
+use examples::proto::hello::greeter_client::GreeterClient;
+use examples::proto::hello::HelloRequest;
 
+/*
 pub mod hello_world {
     tonic::include_proto!("helloworld");
 }
+ */
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
