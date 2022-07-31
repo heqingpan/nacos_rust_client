@@ -9,7 +9,7 @@ nacos_rust_client 对 tonic 服务地址选择器的适配
 ```toml
 [dependencies]
 nacos-tonic-discover = "0.1"
-nacos_rust_client = "0.1"
+nacos_rust_client = "0.2"
 tonic = "0.7"
 ```
 
