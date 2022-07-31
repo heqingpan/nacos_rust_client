@@ -1,6 +1,6 @@
 [package]
 name = "nacos-tonic-discover"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["heqingpan <heqingpan@126.com>"]
 license = "MIT/Apache-2.0"
 description = "nacos tonic discover "
@@ -19,4 +19,5 @@ actix = "0.12"
 log="0"
 tokio = {version="1",features=["full"]}
 anyhow="1"
+lazy_static = "1.4"
 

@@ -13,6 +13,40 @@ nacos_rust_client = "0.2"
 tonic = "0.7"
 ```
 
+### 地址选择器工厂
+
+地址选择器工厂,背后会缓存channel,监听服务地址变更然后更新到channel。
+
+1. 创建地址选择器工厂
+
+```rust
+let discover_factory = TonicDiscoverFactory::new(naming_client.clone());
+```
+
+创建地址选择器工厂,后会把工厂的一个引用加入到全局对象,可以通过 `get_last_factory`获取.
+
+```rust
+let discover_factory = nacos_tonic_discover::get_last_factory().unwrap();```
+
+2. 构建指定服务对应的 `tonic::transport::Channel`
+
+```rust
+let service_key = ServiceInstanceKey::new("helloworld","AppName");
+let channel = discover_factory.build_service_channel(service_key.clone()).await?;
+```
+
+地址选择器工厂,背后会维护 `Channel`的最新有效地址;对同一个service_key实际只创建一个`Channel`,第一次构建，后续直接返回缓存拷贝。
+
+3. 使用Channel创建service client,并使用
+
+```rust
+let mut client = GreeterClient::new(channel);
+let request = tonic::Request::new(HelloRequest {
+    name: format!("Tonic"),
+});
+let response = client.say_hello(request).await?;
+```
+
 ## 例子
 
 运行下面的例子，需要先启动nacos服务，把例子中的host改成实际的地址。
@@ -24,6 +58,10 @@ tonic = "0.7"
 
 ### tonic service示例
 
+```sh
+# 运行方式
+cargo run --example tonic_discover_service
+```
 
 
 ```rust
@@ -99,6 +137,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 ### tonic client示例
+
+```sh
+# 运行方式
+cargo run --example tonic_discover_client
+```
 
 ```rust
 // file: examples/src/tonic-discover/client.rs

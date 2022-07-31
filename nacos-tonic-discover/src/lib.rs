@@ -1,3 +1,4 @@
+use std::sync::Mutex;
 use nacos_rust_client::{ActorCreate, ActixSystemCreateCmd, init_global_system_actor };
 use tonic::transport::Endpoint;
 use std::collections::HashMap;
@@ -32,7 +33,7 @@ pub struct TonicDiscoverFactory {
 }
 
 impl TonicDiscoverFactory {
-    pub fn new(naming_client:Arc<NamingClient>) -> Self {
+    pub fn new(naming_client:Arc<NamingClient>) -> Arc<Self> {
         let system_addr = init_global_system_actor();
         let creator = InnerTonicDiscoverCreate::new(naming_client.clone());
         let (tx,rx) = std::sync::mpsc::sync_channel(1);
@@ -40,10 +41,12 @@ impl TonicDiscoverFactory {
         system_addr.do_send(msg);
         rx.recv().unwrap();
         let tonic_discover_addr = creator.get_value().unwrap();
-        Self {
+        let r=Arc::new(Self {
             tonic_discover_addr,
             naming_client,
-        }
+        });
+        set_last_factory(r.clone());
+        r
     }
 
     /**
@@ -85,6 +88,11 @@ impl TonicDiscoverFactory {
         self.naming_client.subscribe(Box::new(listener)).await?;
         Ok(())
     }
+
+    pub fn get_naming_client(&self) -> &Arc<NamingClient> {
+        &self.naming_client
+    }
+
 }
 
 
@@ -177,13 +185,13 @@ impl Handler<DiscoverCmd> for InnerTonicDiscover {
 
 #[derive(Clone)]
 pub struct InnerTonicDiscoverCreate {
-    pub content:Arc<std::sync::RwLock<Option<Addr<InnerTonicDiscover>>>>,
-    pub params: Arc<NamingClient>,
+    pub(crate) content:Arc<std::sync::RwLock<Option<Addr<InnerTonicDiscover>>>>,
+    pub(crate) params: Arc<NamingClient>,
 }
 
 impl InnerTonicDiscoverCreate {
 
-    pub fn new(params: Arc<NamingClient>) -> Self {
+    pub(crate) fn new(params: Arc<NamingClient>) -> Self {
         Self{ content:Default::default(),params}
     }
 
@@ -206,4 +214,19 @@ impl ActorCreate for InnerTonicDiscoverCreate {
         let addr  = actor.start();
         Self::set_value(self.content.clone(), addr);
     }
+}
+
+
+lazy_static::lazy_static! {
+    static ref LAST_FACTORY: Mutex<Option<Arc<TonicDiscoverFactory>>> =  Mutex::new(None);
+}
+
+pub fn get_last_factory() -> Option<Arc<TonicDiscoverFactory>> {
+    let r = LAST_FACTORY.lock().unwrap();
+    r.clone()
+}
+
+pub(crate) fn set_last_factory(addr:Arc<TonicDiscoverFactory>) {
+    let mut r = LAST_FACTORY.lock().unwrap();
+    *r = Some(addr);
 }
