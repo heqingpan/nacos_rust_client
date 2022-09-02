@@ -1,7 +1,7 @@
 use std::time::Duration;
 use std::sync::Arc;
 
-use nacos_rust_client::client::{ HostInfo, AuthInfo };
+//use nacos_rust_client::client::{ HostInfo, AuthInfo };
 use nacos_rust_client::client::config_client::{
     ConfigClient,ConfigKey,ConfigDefaultListener
 };
@@ -54,8 +54,8 @@ async fn check_listener_value(){
     })));
     config_client.set_config(&key,&serde_json::to_string(&foo_obj).unwrap()).await.unwrap();
     //监听
-    config_client.subscribe(foo_config_obj_listener.clone()).await;
-    config_client.subscribe(foo_config_string_listener.clone()).await;
+    config_client.subscribe(foo_config_obj_listener.clone()).await.unwrap();
+    config_client.subscribe(foo_config_string_listener.clone()).await.unwrap();
     //从监听对象中获取
     println!("key:{:?} ,value:{:?}",&key.data_id,foo_config_string_listener.get_value());
     for i in 1..10 {

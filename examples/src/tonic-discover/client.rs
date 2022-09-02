@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let service_key = ServiceInstanceKey::new("helloworld","AppName");
     //build client by discover factory
-    let discover_factory = TonicDiscoverFactory::new(naming_client.clone());
+    let _ = TonicDiscoverFactory::new(naming_client.clone());
     let discover_factory = nacos_tonic_discover::get_last_factory().unwrap();
     let channel = discover_factory.build_service_channel(service_key.clone()).await?;
     let mut client = GreeterClient::new(channel);

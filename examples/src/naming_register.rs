@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use std::time::Duration;
 
-use nacos_rust_client::client::{HostInfo, AuthInfo, naming_client::{NamingClient, Instance,QueryInstanceListParams}};
+//use nacos_rust_client::client::{ HostInfo, AuthInfo };
+use nacos_rust_client::client::{naming_client::{NamingClient, Instance,QueryInstanceListParams}};
 
 
 
@@ -40,7 +41,7 @@ async fn main(){
     //let client2 = client.clone();
     tokio::spawn(
         async move {
-            query_params().await;
+            query_params().await.unwrap();
         }
     );
 
