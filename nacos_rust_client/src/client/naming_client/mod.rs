@@ -83,7 +83,7 @@ impl Instance {
         }
         beat.period = REGISTER_PERIOD as i64;
         beat.scheduled=false;
-        beat.serviceName = self.get_service_named();
+        beat.service_name = self.get_service_named();
         beat.stopped=false;
         beat.weight = self.weight;
         beat
@@ -94,10 +94,10 @@ impl Instance {
         let mut req = BeatRequest::default();
         let beat = self.generate_beat_info();
         req.beat = serde_json::to_string(&beat).unwrap();
-        req.namespaceId = self.namespace_id.to_owned();
-        req.serviceName = beat.serviceName;
-        req.clusterName = beat.cluster;
-        req.groupName = self.group_name.to_owned();
+        req.namespace_id = self.namespace_id.to_owned();
+        req.service_name = beat.service_name;
+        req.cluster_name = beat.cluster;
+        req.group_name = self.group_name.to_owned();
         req
     }
 
@@ -114,7 +114,7 @@ impl Instance {
         let mut params = InstanceWebParams::default();
         params.ip = self.ip.to_owned();
         params.port = self.port;
-        params.namespaceId = self.namespace_id.to_owned();
+        params.namespace_id = self.namespace_id.to_owned();
         params.weight = self.weight;
         params.enabled=true;
         params.healthy=true;
@@ -122,9 +122,9 @@ impl Instance {
         if let Some(metadata) = &self.metadata {
             params.metadata = serde_json::to_string(metadata).unwrap();
         }
-        params.clusterName = self.cluster_name.to_owned();
-        params.serviceName = self.get_service_named();
-        params.groupName = self.group_name.to_owned();
+        params.cluster_name = self.cluster_name.to_owned();
+        params.service_name = self.get_service_named();
+        params.group_name = self.group_name.to_owned();
         params
     }
 }
@@ -198,15 +198,15 @@ impl QueryInstanceListParams{
 
     fn to_web_params(&self) -> InstanceWebQueryListParams {
         let mut params = InstanceWebQueryListParams::default();
-        params.namespaceId = self.namespace_id.to_owned();
-        params.groupName = self.group_name.to_owned();
-        params.serviceName = NamingUtils::get_group_and_service_name(&self.service_name, &self.group_name);
+        params.namespace_id = self.namespace_id.to_owned();
+        params.group_name = self.group_name.to_owned();
+        params.service_name = NamingUtils::get_group_and_service_name(&self.service_name, &self.group_name);
         if let Some(clusters) = &self.clusters {
             params.clusters = clusters.join(",")
         }
-        params.healthyOnly=self.healthy_only;
-        params.clientIP=self.client_ip.clone();
-        params.udpPort=self.udp_port;
+        params.healthy_only=self.healthy_only;
+        params.client_ip=self.client_ip.clone();
+        params.udp_port=self.udp_port;
         params
     }
 }

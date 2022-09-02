@@ -5,6 +5,7 @@ use super::Instance;
 
 
 #[derive(Debug,Serialize,Deserialize,Default)]
+#[serde(rename_all = "camelCase")]
 pub struct BeatInfo {
     pub cluster:String,
     pub ip:String,
@@ -12,67 +13,72 @@ pub struct BeatInfo {
     pub metadata:HashMap<String,String>,
     pub period:i64,
     pub scheduled:bool,
-    pub serviceName:String,
+    pub service_name:String,
     pub stopped:bool,
     pub weight:f32,
 }
 
 #[derive(Debug,Serialize,Deserialize,Default)]
+#[serde(rename_all = "camelCase")]
 pub struct BeatRequest{
-    pub namespaceId:String,
-    pub serviceName:String,
-    pub clusterName:String,
-    pub groupName:String,
+    pub namespace_id:String,
+    pub service_name:String,
+    pub cluster_name:String,
+    pub group_name:String,
     pub ephemeral:Option<String>,
     pub beat:String,
 }
 
 #[derive(Debug,Serialize,Deserialize,Default)]
+#[serde(rename_all = "camelCase")]
 pub struct InstanceWebParams {
     pub ip:String,
     pub port:u32,
-    pub namespaceId:String,
+    pub namespace_id:String,
     pub weight: f32,
     pub enabled:bool,
     pub healthy:bool,
     pub ephemeral:bool,
     pub metadata:String,
-    pub clusterName:String,
-    pub serviceName:String,
-    pub groupName:String,
+    pub cluster_name:String,
+    pub service_name:String,
+    pub group_name:String,
 }
 
 #[derive(Debug,Default,Serialize,Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstanceWebQueryListParams {
-    pub namespaceId:String,
-    pub serviceName:String,
-    pub groupName:String,
+    pub namespace_id:String,
+    pub service_name:String,
+    pub group_name:String,
     pub clusters:String,
-    pub healthyOnly:bool,
-    pub clientIP:Option<String>,
-    pub udpPort:Option<u16>,
+    pub healthy_only:bool,
+    #[serde(rename = "clientIP")]
+    pub client_ip:Option<String>,
+    pub udp_port:Option<u16>,
 }
 
 #[derive(Debug,Serialize,Deserialize,Default,Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct InstanceVO {
     service:Option<String>,
     ip:Option<String>,
     port:Option<u32>,
-    clusterName:Option<String>,
+    cluster_name:Option<String>,
     weight:Option<f32>,
     healthy:Option<bool>,
-    instanceId:Option<String>,
+    instance_id:Option<String>,
     metadata:Option<HashMap<String,String>>,
     marked:Option<bool>,
     enabled:Option<bool>,
-    serviceName:Option<String>,
+    service_name:Option<String>,
     ephemeral:Option<bool>,
 }
 
 impl InstanceVO {
     pub fn get_group_name(&self) -> String {
         if let Some(service) = &self.service {
-            if let Some((group_name,service_name)) = NamingUtils::split_group_and_serivce_name(service){
+            if let Some((group_name,_)) = NamingUtils::split_group_and_serivce_name(service){
                 return group_name;
             }
         }
@@ -90,7 +96,7 @@ impl InstanceVO {
         //if let Some(service_name) = self.serviceName { instance.service_name = service_name; }
         if let Some(ip) = self.ip { instance.ip = ip; }
         if let Some(port) = self.port { instance.port = port; }
-        if let Some(cluster_name) = self.clusterName { instance.cluster_name= cluster_name; }
+        if let Some(cluster_name) = self.cluster_name { instance.cluster_name= cluster_name; }
         if let Some(weight) = self.weight { instance.weight= weight; }
         if let Some(healthy) = self.healthy { instance.healthy= healthy; }
         instance.metadata=self.metadata;
@@ -101,17 +107,19 @@ impl InstanceVO {
 }
 
 #[derive(Debug,Serialize,Deserialize,Default)]
+#[serde(rename_all = "camelCase")]
 pub struct QueryListResult {
     pub name:Option<String>,
     pub clusters:Option<String>,
-    pub cacheMillis:Option<u64>,
+    pub cache_millis:Option<u64>,
     pub hosts:Option<Vec<InstanceVO>>,
-    pub lastRefTime:Option<i64>,
+    pub last_ref_time:Option<i64>,
     pub checksum:Option<String>,
-    pub useSpecifiedURL:Option<bool>,
+    #[serde(rename = "useSpecifiedURL")]
+    pub use_specified_url:Option<bool>,
     pub env:Option<String>,
-    pub protectThreshold:Option<f32>,
-    pub reachLocalSiteCallThreshold:Option<bool>,
+    pub protect_threshold:Option<f32>,
+    pub reach_local_site_call_threshold:Option<bool>,
     pub dom:Option<String>,
     pub metadata:Option<HashMap<String,String>>,
 }

@@ -144,7 +144,7 @@ impl InnerNamingListener {
     }
 
     fn update_instances_and_notify(&mut self,key:String,result:QueryListResult) -> anyhow::Result<()> {
-        if let Some(cache_millis) = result.cacheMillis {
+        if let Some(cache_millis) = result.cache_millis {
             self.period = cache_millis;
         }
         let mut is_notify=false;
@@ -359,7 +359,7 @@ impl Handler<UdpDataCmd> for InnerNamingListener {
         let map:HashMap<String,String> = serde_json::from_slice(&data).unwrap_or_default();
         if let Some(str_data) = map.get("data") {
             let result:QueryListResult=serde_json::from_str(str_data)?;
-            let ref_time  = result.lastRefTime.clone().unwrap_or_default();
+            let ref_time  = result.last_ref_time.clone().unwrap_or_default();
             let key = result.name.clone().unwrap_or_default();
             //send to client
             let mut map = HashMap::new();
