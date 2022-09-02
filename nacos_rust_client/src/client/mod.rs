@@ -106,22 +106,22 @@ impl ServerEndpointInfo {
     }
 
     pub fn select_host(&self) -> &HostInfo{
-        let index=naming_client::NamingUtils::select_by_weight_fn(&self.hosts, |e| 1);
+        let index=naming_client::NamingUtils::select_by_weight_fn(&self.hosts, |_| 1);
         self.hosts.get(index).unwrap()
     }
 
 }
 
 pub struct Client {
-    server_addr: String,
-    tenant: Option<String>,
+    //server_addr: String,
+    //tenant: Option<String>,
 }
 
 impl Client {
-    pub fn new (addr: &str) -> Client {
+    pub fn new (_: &str) -> Client {
         Client{
-            server_addr: addr.to_string(),
-            tenant: None,
+            //server_addr: addr.to_string(),
+            //tenant: None,
         }
     }
 

@@ -28,14 +28,14 @@ impl NacosConfig {
 }
 
 pub struct NacosClient {
-    config:NacosConfig,
+    //config:NacosConfig,
 }
 
 impl NacosClient {
-    pub fn new(addr:&str) -> Self{
-        let config = NacosConfig::new(addr);
+    pub fn new(_:&str) -> Self{
+        //let config = NacosConfig::new(addr);
         Self {
-            config
+            //config
         }
     }
 }
@@ -58,7 +58,7 @@ impl ActixSystemActor {
 impl Actor for ActixSystemActor {
     type Context = Context<Self>;
 
-    fn started(&mut self,ctx:&mut Self::Context){
+    fn started(&mut self,_:&mut Self::Context){
         log::info!("ActixSystemActor started");
     }
 }
@@ -93,24 +93,24 @@ impl Handler<ActixSystemCmd> for ActixSystemActor
         match msg {
             ActixSystemCmd::AuthActor(actor, tx) => {
                 let addr = actor.start();
-                tx.send(ActixSystemResult::AuthActorAddr(addr));
+                tx.send(ActixSystemResult::AuthActorAddr(addr)).unwrap_or_default();
             },
             ActixSystemCmd::ConfigInnerActor(actor, tx) => {
                 let addr = actor.start();
-                tx.send(ActixSystemResult::ConfigInnerActor(addr));
+                tx.send(ActixSystemResult::ConfigInnerActor(addr)).unwrap_or_default();
             },
             ActixSystemCmd::UdpWorker(actor, tx) => {
                 let addr = actor.start();
-                tx.send(ActixSystemResult::UdpWorker(addr));
+                tx.send(ActixSystemResult::UdpWorker(addr)).unwrap_or_default();
 
             },
             ActixSystemCmd::InnerNamingListener(actor, tx) => {
                 let addr = actor.start();
-                tx.send(ActixSystemResult::InnerNamingListener(addr));
+                tx.send(ActixSystemResult::InnerNamingListener(addr)).unwrap_or_default();
             },
             ActixSystemCmd::InnerNamingRegister(actor, tx) => {
                 let addr = actor.start();
-                tx.send(ActixSystemResult::InnerNamingRegister(addr));
+                tx.send(ActixSystemResult::InnerNamingRegister(addr)).unwrap_or_default();
             },
             ActixSystemCmd::Close => {
                 if let Some(naming_client) = &self.last_naming_client {
@@ -161,7 +161,7 @@ pub enum ActixSystemCreateCmd{
 impl Handler<ActixSystemCreateCmd> for ActixSystemActor 
 {
     type Result = Result<(),std::io::Error>;
-    fn handle(&mut self,msg:ActixSystemCreateCmd,ctx:&mut Context<Self>) -> Self::Result {
+    fn handle(&mut self,msg:ActixSystemCreateCmd,_:&mut Context<Self>) -> Self::Result {
         match msg {
             ActixSystemCreateCmd::ActorInit(t,tx) => {
                 t.create();
@@ -181,7 +181,7 @@ pub enum ActixSystemCreateAsyncCmd{
 impl Handler<ActixSystemCreateAsyncCmd> for ActixSystemActor 
 {
     type Result = Result<Box<dyn ActorCreate+Send>,std::io::Error>;
-    fn handle(&mut self,msg:ActixSystemCreateAsyncCmd,ctx:&mut Context<Self>) -> Self::Result {
+    fn handle(&mut self,msg:ActixSystemCreateAsyncCmd,_:&mut Context<Self>) -> Self::Result {
         let v = match msg {
             ActixSystemCreateAsyncCmd::ActorInit(v) => {
                 v.create();
@@ -202,7 +202,7 @@ pub enum ActixSystemActorSetCmd{
 impl Handler<ActixSystemActorSetCmd> for ActixSystemActor 
 {
     type Result = Result<(),std::io::Error>;
-    fn handle(&mut self,msg:ActixSystemActorSetCmd,ctx:&mut Context<Self>) -> Self::Result {
+    fn handle(&mut self,msg:ActixSystemActorSetCmd,_:&mut Context<Self>) -> Self::Result {
         match msg {
             ActixSystemActorSetCmd::LastConfigClient(config_client) => {
                 self.last_config_client = Some(config_client);
@@ -236,7 +236,7 @@ pub enum ActixSystemActorQueryResult{
 impl Handler<ActixSystemActorQueryCmd> for ActixSystemActor 
 {
     type Result = Result<ActixSystemActorQueryResult,std::io::Error>;
-    fn handle(&mut self,msg:ActixSystemActorQueryCmd,ctx:&mut Context<Self>) -> Self::Result {
+    fn handle(&mut self,msg:ActixSystemActorQueryCmd,_:&mut Context<Self>) -> Self::Result {
         match msg {
             ActixSystemActorQueryCmd::QueryLastConfigClient => {
                 if let Some(client) = &self.last_config_client{

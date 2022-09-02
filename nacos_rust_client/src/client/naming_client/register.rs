@@ -45,20 +45,20 @@ impl InnerNamingRegister {
     fn remove_instance(&self,instance:Instance,ctx:&mut actix::Context<Self>){
         let client = self.request_client.clone();
         async move {
-            client.remove(&instance).await;
+            client.remove(&instance).await.unwrap_or_default();
             instance
         }.into_actor(self)
-        .map(|_,_,ctx|{}).spawn(ctx);
+        .map(|_,_,_|{}).spawn(ctx);
     }
 
     fn remove_all_instance(&mut self,ctx:&mut actix::Context<Self>) {
-        let client = self.request_client.clone();
         let instances = self.instances.clone();
         for (_,instance) in instances {
             self.remove_instance(instance,ctx);
         }
         self.instances = HashMap::new();
         /*
+        let client = self.request_client.clone();
         async move {
             for (_,instance) in instances.iter() {
                 client.remove(&instance).await;
@@ -117,7 +117,7 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                 self.timeout_set.add(time+self.period,key.clone());
                 let client = self.request_client.clone();
                 async move {
-                    client.register(&instance).await;
+                    client.register(&instance).await.unwrap_or_default();
                     instance
                 }.into_actor(self)
                 .map(|instance,act,_|{
@@ -127,7 +127,7 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
             },
             NamingRegisterCmd::Remove(instance) => {
                 let key = instance.generate_key();
-                if let Some(instatnce)=self.instances.remove(&key) {
+                if let Some(instance)=self.instances.remove(&key) {
                     // request unregister
                     self.remove_instance(instance, ctx);
 
@@ -140,7 +140,7 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                     if let Some(beat_string) = &instance.beat_string {
                         let beat_string = beat_string.clone();
                         async move {
-                            client.heartbeat(beat_string).await;
+                            client.heartbeat(beat_string).await.unwrap_or_default();
                         }.into_actor(self)
                         .map(|_,_,_|{}).spawn(ctx);
                     }

@@ -76,7 +76,7 @@ impl TonicDiscoverFactory {
         let new_key = key.clone();
 
         let listener = InstanceDefaultListener::new(key.clone(),Some(Arc::new(
-            move |instances,add_list,remove_list| {
+            move |_,add_list,remove_list| {
             if add_list.len()> 0 || remove_list.len() > 0 {
                 let msg = DiscoverCmd::Change(new_key.clone(), add_list, remove_list);
                 addr.do_send(msg);
@@ -98,13 +98,11 @@ impl TonicDiscoverFactory {
 
 pub struct InnerTonicDiscover {
     service_map:HashMap<String,DiscoverEntity>,
-    naming_client:Arc<NamingClient>,
 }
 
 impl InnerTonicDiscover {
-    pub fn new(naming_client:Arc<NamingClient>) -> Self {
+    pub fn new(_:Arc<NamingClient>) -> Self {
         Self {
-            naming_client,
             service_map: Default::default(),
         }
     }
@@ -119,7 +117,7 @@ impl InnerTonicDiscover {
                     match Endpoint::from_str(&format!("http://{}",host)) {
                         Ok(endpoint) => {
                             let change = Change::Insert(host,endpoint);
-                            sender.send(change).await;
+                            sender.send(change).await.unwrap_or_default();
                         }
                         Err(_) => todo!(),
                     };
@@ -127,9 +125,9 @@ impl InnerTonicDiscover {
                 for item in &remove_list{
                     let host=format!("{}:{}",&item.ip,item.port);
                     let change = Change::Remove(host);
-                    sender.send(change).await;
+                    sender.send(change).await.unwrap_or_default();
                 }
-            }.into_actor(self).map(|r,act,ctx|{
+            }.into_actor(self).map(|_,_,_|{
             }).wait(ctx);
         }
     }
@@ -138,7 +136,7 @@ impl InnerTonicDiscover {
 impl Actor for InnerTonicDiscover {
     type Context = Context<Self>;
 
-    fn started(&mut self,ctx:&mut Self::Context){
+    fn started(&mut self,_:&mut Self::Context){
         log::info!("AuthActor started");
         //ctx.run_later(Duration::from_nanos(1), |act,ctx|{
         //    act.hb(ctx);

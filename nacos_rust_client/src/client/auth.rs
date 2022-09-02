@@ -48,7 +48,7 @@ impl AuthActor {
             let result=super::Client::login(&client, endpoints, &auth).await;
             result
         }
-        .into_actor(self).map(|result,this,ctx|{
+        .into_actor(self).map(|result,this,_|{
             match result {
                 Ok(token_info) => {
                     this.token=Arc::new(token_info.access_token);

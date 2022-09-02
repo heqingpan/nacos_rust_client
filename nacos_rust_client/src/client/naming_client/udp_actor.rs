@@ -1,14 +1,8 @@
 use std::time::Duration;
 use actix::prelude::*;
-use std::borrow::Cow;
-use std::env;
-use std::error::Error;
-use std::io::stdin;
 use std::net::{SocketAddr};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
-use tokio::signal;
-use tokio::sync::Mutex;
 
 use super::InnerNamingListener;
 
@@ -136,7 +130,7 @@ pub struct InitLocalAddr{
 }
 
 impl UdpDataCmd {
-    fn new(data: Vec<u8>, addr: SocketAddr) -> Self {
+    pub fn new(data: Vec<u8>, addr: SocketAddr) -> Self {
         Self {
             data,
             target_addr: addr,
@@ -149,7 +143,7 @@ impl Handler<UdpDataCmd> for UdpWorker {
     fn handle(&mut self, msg: UdpDataCmd, ctx: &mut Context<Self>) -> Self::Result {
         let socket = self.socket.as_ref().unwrap().clone();
         async move {
-            socket.send_to(&msg.data, msg.target_addr).await;
+            socket.send_to(&msg.data, msg.target_addr).await.unwrap_or_default();
         }
         .into_actor(self)
         .map(|_, _, _| {})

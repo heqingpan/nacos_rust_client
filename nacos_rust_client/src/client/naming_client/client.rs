@@ -16,7 +16,6 @@ use super::NamingQueryCmd;
 use super::NamingQueryResult;
 use super::QueryInstanceListParams;
 use super::ServiceInstanceKey;
-use super::udp_actor::UdpWorkerCmd;
 use super::{InnerNamingRegister,InnerNamingListener
     ,NamingListenerCmd,NamingRegisterCmd,InnerNamingRequestClient
     ,UdpWorker
@@ -49,7 +48,7 @@ impl NamingClient {
             hosts:vec![host]
         });
         let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint);
-        let addrs=Self::init_register2(namespace_id.clone(),current_ip.clone(),request_client,None);
+        let addrs=Self::init_register(namespace_id.clone(),current_ip.clone(),request_client,None);
         let r=Arc::new(Self{
             namespace_id,
             register:addrs.0,
@@ -70,7 +69,7 @@ impl NamingClient {
                 local_ipaddress::get().unwrap()
             },
         };
-        let addrs=Self::init_register2(namespace_id.clone(),current_ip.clone(),request_client,auth_info);
+        let addrs=Self::init_register(namespace_id.clone(),current_ip.clone(),request_client,auth_info);
         let r = Arc::new(Self{
             namespace_id,
             register:addrs.0,
@@ -82,41 +81,10 @@ impl NamingClient {
         r
     }
 
-    fn init_register(namespace_id:String,client_ip:String,mut request_client:InnerNamingRequestClient,auth_info:Option<AuthInfo>) -> (Addr<InnerNamingRegister>,Addr<InnerNamingListener>) {
-        use tokio::net::{UdpSocket};
-        let (tx,rx) = std::sync::mpsc::sync_channel(1);
-        std::thread::spawn(move || {
-            let rt = System::new();
-            let endpoint=request_client.endpoints.clone();
-            let addrs = rt.block_on(async {
-                let auth_addr = AuthActor::new(endpoint,auth_info).start();
-                request_client.set_auth_addr(auth_addr);
-                //let socket=UdpSocket::bind("0.0.0.0:0").await.unwrap();
-                //let port = socket.local_addr().unwrap().port();
-                let port = 0;
-                //let udp_addr = UdpWorker::new(None).start();
-                //let listener_addr = InnerNamingListener::new(&namespace_id,&client_ip,port, new_request_client,udp_addr).start();
-                let new_request_client = request_client.clone();
-                let listener_addr=InnerNamingListener::create(move |ctx| {
-                    //let udp_addr = UdpWorker::new_with_socket(socket, Some(ctx.address())).start();
-                    let udp_addr = UdpWorker::new(Some(ctx.address())).start();
-                    InnerNamingListener::new(&namespace_id,&client_ip,port, new_request_client,udp_addr) 
-                });
-                (InnerNamingRegister::new(request_client).start(),
-                    listener_addr
-                )
-            });
-            tx.send(addrs);
-            rt.run();
-        });
-        let addrs = rx.recv().unwrap();
-        addrs
-    }
-
-    fn init_register2(namespace_id:String,client_ip:String,mut request_client:InnerNamingRequestClient,auth_info:Option<AuthInfo>) 
+    fn init_register(namespace_id:String,client_ip:String,mut request_client:InnerNamingRequestClient,auth_info:Option<AuthInfo>) 
         -> (Addr<InnerNamingRegister>,Addr<InnerNamingListener>) {
         let system_addr =  init_global_system_actor();
-        let mut endpoint=request_client.endpoints.clone();
+        let endpoint=request_client.endpoints.clone();
         let actor = AuthActor::new(endpoint,auth_info);
         let (tx,rx) = std::sync::mpsc::sync_channel(1);
         let msg = ActixSystemCmd::AuthActor(actor,tx);
@@ -213,7 +181,7 @@ impl NamingClient {
         //如果之前没有数据，会触发加载数据
         let params = QueryInstanceListParams::new(&self.namespace_id,&key.group_name,&key.service_name,None,true);
         match self.query_instances(params).await {
-            Ok(v) => {
+            Ok(_) => {
                 //listener.change(&key, &v,&v,&vec![]);
             },
             Err(_) => {},

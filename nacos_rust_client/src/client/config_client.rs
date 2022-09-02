@@ -1,4 +1,6 @@
 
+#[warn(unused_imports)]
+
 use crate::client::nacos_client::ActixSystemCmd;
 use crate::init_global_system_actor;
 use crate::client::utils::Utils;
@@ -7,15 +9,11 @@ use std::{collections::HashMap,time::Duration};
 use anyhow::anyhow;
 use actix::prelude::*;
 use super::auth::{AuthActor, AuthCmd};
-use super::nacos_client::{ActixSystemActor, ActixSystemActorSetCmd};
-use super::{now_millis, AuthInfo, utils};
+use super::nacos_client::{ActixSystemActorSetCmd};
+use super::{ AuthInfo};
 
-use super::{HostInfo,ServerEndpointInfo, TokenInfo};
+use super::{HostInfo,ServerEndpointInfo};
 use super::get_md5;
-
-fn ms(millis:u64) -> Duration {
-    Duration::from_millis(millis)
-}
 
 #[derive(Debug,Hash,Eq,Clone)]
 pub struct ConfigKey {
@@ -64,33 +62,33 @@ impl ListenerItem {
         let mut list = vec![];
         let mut start = 0;
         let bytes = configs.as_bytes();
-        let mut tmpList = vec![];
+        let mut tmp_list = vec![];
         for i in 0..bytes.len(){
             let char = bytes[i];
             if char == 2 {
-                if tmpList.len() > 2{
+                if tmp_list.len() > 2{
                     continue;
                 }
                 //tmpList.push(configs[start..i].to_owned());
-                tmpList.push(String::from_utf8(configs[start..i].into()).unwrap());
+                tmp_list.push(String::from_utf8(configs[start..i].into()).unwrap());
                 start = i+1;
             }
             else if char == 1 {
-                let mut endValue = String::new();
+                let mut end_value = String::new();
                 if start+1 <=i {
                     //endValue = configs[start..i].to_owned();
-                    endValue = String::from_utf8(configs[start..i].into()).unwrap();
+                    end_value = String::from_utf8(configs[start..i].into()).unwrap();
                 }
                 start = i+1;
-                if tmpList.len() == 2 {
-                    let key = ConfigKey::new(&tmpList[0],&tmpList[1],"");
-                    list.push(ListenerItem::new(key,endValue));
+                if tmp_list.len() == 2 {
+                    let key = ConfigKey::new(&tmp_list[0],&tmp_list[1],"");
+                    list.push(ListenerItem::new(key,end_value));
                 }
                 else{
-                    let key = ConfigKey::new(&tmpList[0],&tmpList[1],&endValue);
-                    list.push(ListenerItem::new(key,tmpList[2].to_owned()));
+                    let key = ConfigKey::new(&tmp_list[0],&tmp_list[1],&end_value);
+                    list.push(ListenerItem::new(key,tmp_list[2].to_owned()));
                 }
-                tmpList.clear();
+                tmp_list.clear();
             }
         }
         list
@@ -100,33 +98,33 @@ impl ListenerItem {
         let mut list = vec![];
         let mut start = 0;
         let bytes = configs.as_bytes();
-        let mut tmpList = vec![];
+        let mut tmp_list = vec![];
         for i in 0..bytes.len(){
             let char = bytes[i];
             if char == 2 {
-                if tmpList.len() > 2{
+                if tmp_list.len() > 2{
                     continue;
                 }
                 //tmpList.push(configs[start..i].to_owned());
-                tmpList.push(String::from_utf8(configs[start..i].into()).unwrap());
+                tmp_list.push(String::from_utf8(configs[start..i].into()).unwrap());
                 start = i+1;
             }
             else if char == 1 {
-                let mut endValue = String::new();
+                let mut end_value = String::new();
                 if start+1 <=i {
                     //endValue = configs[start..i].to_owned();
-                    endValue = String::from_utf8(configs[start..i].into()).unwrap();
+                    end_value = String::from_utf8(configs[start..i].into()).unwrap();
                 }
                 start = i+1;
-                if tmpList.len() == 1 {
-                    let key = ConfigKey::new(&tmpList[0],&endValue,"");
+                if tmp_list.len() == 1 {
+                    let key = ConfigKey::new(&tmp_list[0],&end_value,"");
                     list.push(key);
                 }
                 else{
-                    let key = ConfigKey::new(&tmpList[0],&tmpList[1],&endValue);
+                    let key = ConfigKey::new(&tmp_list[0],&tmp_list[1],&end_value);
                     list.push(key);
                 }
-                tmpList.clear();
+                tmp_list.clear();
             }
         }
         list
@@ -307,12 +305,12 @@ pub struct ConfigDefaultListener<T>
 {
     key:ConfigKey,
     pub content:Arc<std::sync::RwLock<Option<Arc<T>>>>,
-    pub convert:Arc<Fn(&str)-> Option<T>+Send+Sync>,
+    pub convert:Arc<dyn Fn(&str)-> Option<T>+Send+Sync>,
 }
 
 impl <T> ConfigDefaultListener <T>
  {
-    pub fn new( key:ConfigKey,convert:Arc<Fn(&str)-> Option<T>+Send+Sync>) -> Self {
+    pub fn new( key:ConfigKey,convert:Arc<dyn Fn(&str)-> Option<T>+Send+Sync>) -> Self {
         Self {
             key,
             content: Default::default(),
@@ -351,8 +349,8 @@ impl <T> ConfigListener for ConfigDefaultListener<T> {
 
 impl ConfigClient {
     pub fn new(host:HostInfo,tenant:String) -> Arc<Self> {
-        let mut request_client = ConfigInnerRequestClient::new(host.clone());
-        let (config_inner_addr,_) = Self::init_register2(request_client.clone(),None);
+        let request_client = ConfigInnerRequestClient::new(host.clone());
+        let (config_inner_addr,_) = Self::init_register(request_client.clone(),None);
         //request_client.set_auth_addr(auth_addr);
         let r=Arc::new(Self{
             tenant,
@@ -367,7 +365,7 @@ impl ConfigClient {
     pub fn new_with_addrs(addrs:&str,tenant:String,auth_info:Option<AuthInfo>) -> Arc<Self> {
         let endpoint = Arc::new(ServerEndpointInfo::new(addrs));
         let mut request_client = ConfigInnerRequestClient::new_with_endpoint(endpoint);
-        let (config_inner_addr,auth_addr) = Self::init_register2(request_client.clone(),auth_info);
+        let (config_inner_addr,auth_addr) = Self::init_register(request_client.clone(),auth_info);
         request_client.set_auth_addr(auth_addr);
         let r=Arc::new(Self{
             tenant,
@@ -379,27 +377,7 @@ impl ConfigClient {
         r
     }
 
-    fn init_register(mut request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>) -> (Addr<ConfigInnerActor>,Addr<AuthActor>) {
-        let (tx,rx) = std::sync::mpsc::sync_channel(1);
-        let endpoint=request_client.endpoints.clone();
-        std::thread::spawn(move || {
-            let rt = System::new();
-            let addrs = rt.block_on(async {
-                let auth_addr = AuthActor::new(endpoint,auth_info).start();
-                request_client.set_auth_addr(auth_addr.clone());
-                let addr=ConfigInnerActor::new(request_client).start();
-                (addr,auth_addr)
-            });
-            tx.send(addrs);
-            log::info!("config actor init_register");
-            println!("config actor init_register");
-            rt.run();
-        });
-        let addrs = rx.recv().unwrap();
-        addrs
-    }
-
-    fn init_register2(mut request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>) -> (Addr<ConfigInnerActor>,Addr<AuthActor>){
+    fn init_register(request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>) -> (Addr<ConfigInnerActor>,Addr<AuthActor>){
         let system_addr =  init_global_system_actor();
         let endpoint=request_client.endpoints.clone();
         let actor = AuthActor::new(endpoint,auth_info);
@@ -479,18 +457,18 @@ impl ConfigClient {
 
 struct ListenerValue {
     md5:String,
-    listeners:Vec<(u64,Box<ConfigListener + Send>)>,
+    listeners:Vec<(u64,Box<dyn ConfigListener + Send>)>,
 }
 
 impl ListenerValue {
-    fn new(listeners:Vec<(u64,Box<ConfigListener + Send>)>,md5:String) -> Self {
+    fn new(listeners:Vec<(u64,Box<dyn ConfigListener + Send>)>,md5:String) -> Self {
         Self{
             md5,
             listeners,
         }
     }
 
-    fn push(&mut self,id:u64,func:Box<ConfigListener + Send>) {
+    fn push(&mut self,id:u64,func:Box<dyn ConfigListener + Send>) {
         self.listeners.push((id,func));
     }
 
@@ -525,12 +503,12 @@ pub struct ConfigInnerActor{
     subscribe_map:HashMap<ConfigKey,ListenerValue>,
 }
 
-type ConfigInnerHandleResultSender = tokio::sync::oneshot::Sender<ConfigInnerHandleResult>;
+//type ConfigInnerHandleResultSender = tokio::sync::oneshot::Sender<ConfigInnerHandleResult>;
 
 #[derive(Message)]
 #[rtype(result="Result<ConfigInnerHandleResult,std::io::Error>")]
 pub enum ConfigInnerCmd {
-    SUBSCRIBE(ConfigKey,u64,String,Box<ConfigListener + Send + 'static>),
+    SUBSCRIBE(ConfigKey,u64,String,Box<dyn ConfigListener + Send + 'static>),
     REMOVE(ConfigKey,u64),
     Close,
 }
@@ -562,7 +540,7 @@ impl ConfigInnerActor{
     fn listener(&mut self,ctx:&mut actix::Context<Self>) {
         if let Some(content) = self.get_listener_body(){
             let request_client = self.request_client.clone();
-            let endpoints = self.request_client.endpoints.clone();
+            //let endpoints = self.request_client.endpoints.clone();
             async move{
                 let mut list =vec![];
                 match request_client.listene(&content, None).await{

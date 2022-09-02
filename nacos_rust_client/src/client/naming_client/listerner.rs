@@ -26,11 +26,11 @@ pub trait InstanceListener {
 pub struct InstanceDefaultListener {
     key:ServiceInstanceKey,
     pub content:Arc<std::sync::RwLock<Option<Arc<Vec<Arc<Instance>>>>>>,
-    pub callback:Option<Arc<Fn(Arc<InstanceListenerValue>,InstanceListenerValue,InstanceListenerValue)-> () +Send+Sync>>,
+    pub callback:Option<Arc<dyn Fn(Arc<InstanceListenerValue>,InstanceListenerValue,InstanceListenerValue)-> () +Send+Sync>>,
 }
 
 impl InstanceDefaultListener{
-    pub fn new( key:ServiceInstanceKey,callback:Option<Arc<Fn(Arc<InstanceListenerValue>,InstanceListenerValue,InstanceListenerValue)-> () +Send+Sync>>) -> Self {
+    pub fn new( key:ServiceInstanceKey,callback:Option<Arc<dyn Fn(Arc<InstanceListenerValue>,InstanceListenerValue,InstanceListenerValue)-> () +Send+Sync>>) -> Self {
         Self{
             key,
             content: Default::default(),
@@ -72,15 +72,13 @@ impl InstanceListener for InstanceDefaultListener {
 
 
 struct ListenerValue{
-    pub listener_key:ServiceInstanceKey,
     pub listener: Box<dyn InstanceListener+Send>,
     pub id:u64,
 }
 
 impl ListenerValue{
-    fn new(listener_key:ServiceInstanceKey,listener:Box<dyn InstanceListener+Send>,id:u64) -> Self{
+    fn new(_:ServiceInstanceKey,listener:Box<dyn InstanceListener+Send>,id:u64) -> Self{
         Self{
-            listener_key,
             listener,
             id,
         }
@@ -131,10 +129,10 @@ impl InnerNamingListener {
             async move{
                 (key,client.get_instance_list(&params).await)
             }.into_actor(self)
-            .map(|(key,res),act,ctx|{
+            .map(|(key,res),act,_|{
                 match res {
                     Ok(result) => {
-                    act.update_instances_and_notify(key, result);
+                    act.update_instances_and_notify(key, result).unwrap_or_default();
                     },
                     Err(e) =>{
                         log::error!("get_instance_list error:{}",e);
@@ -178,7 +176,7 @@ impl InnerNamingListener {
                         add_list.push(item.clone());
                     }
                 }
-                let remove_list:Vec<Arc<Instance>> = old_instance_map.into_iter().map(|(k,v)| {v}).collect();
+                let remove_list:Vec<Arc<Instance>> = old_instance_map.into_iter().map(|(_,v)| {v}).collect();
                 self.notify_listener(key, &instance_warp.instances,add_list,remove_list);
             }
         }
@@ -257,7 +255,7 @@ impl Actor for InnerNamingListener {
 #[derive(Message)]
 #[rtype(result = "Result<(),std::io::Error>")]
 pub enum NamingListenerCmd {
-    Add(ServiceInstanceKey,u64,Box<InstanceListener+Send+'static>),
+    Add(ServiceInstanceKey,u64,Box<dyn InstanceListener+Send+'static>),
     Remove(ServiceInstanceKey,u64),
     AddHeartbeat(ServiceInstanceKey),
     Heartbeat(String,u64),
@@ -353,7 +351,7 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
 
 impl Handler<UdpDataCmd> for InnerNamingListener {
     type Result = Result<(),std::io::Error>;
-    fn handle(&mut self,msg:UdpDataCmd,ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self,msg:UdpDataCmd,_: &mut Context<Self>) -> Self::Result {
         let data = match Utils::gz_decode(&msg.data){
             Some(data) => data,
             None => msg.data,
@@ -375,7 +373,7 @@ impl Handler<UdpDataCmd> for InnerNamingListener {
             };
             self.udp_addr.do_send(send_msg);
             //update
-            self.update_instances_and_notify(key,result);
+            self.update_instances_and_notify(key,result).unwrap_or_default();
         }
         Ok(())
     }
@@ -383,7 +381,7 @@ impl Handler<UdpDataCmd> for InnerNamingListener {
 
 impl Handler<InitLocalAddr> for InnerNamingListener {
     type Result = Result<(),std::io::Error>;
-    fn handle(&mut self, msg: InitLocalAddr, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: InitLocalAddr, _: &mut Self::Context) -> Self::Result {
         log::info!("InnerNamingListener init udp port by InitLocalAddr:{},oldport:{}",&msg.port,&self.udp_port);
         self.udp_port = msg.port;
         Ok(())
@@ -391,7 +389,7 @@ impl Handler<InitLocalAddr> for InnerNamingListener {
 }
 
 type ListenerSenderType = tokio::sync::oneshot::Sender<NamingQueryResult>;
-type ListenerReceiverType = tokio::sync::oneshot::Receiver<NamingQueryResult>;
+//type ListenerReceiverType = tokio::sync::oneshot::Receiver<NamingQueryResult>;
 
 #[derive(Message)]
 #[rtype(result = "Result<NamingQueryResult,std::io::Error>")]
@@ -412,7 +410,7 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
         match msg {
             NamingQueryCmd::QueryList(param,sender) => {
                 if let Some(list) = self.filter_instances(&param,ctx) {
-                    sender.send(NamingQueryResult::List(list));
+                    sender.send(NamingQueryResult::List(list)).unwrap_or_default();
                 }
                 else{
                     let request_client = self.request_client.clone();
@@ -424,15 +422,15 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
                         match res {
                             Ok(list_result) => {
                                 let key = param.get_key();
-                                act.update_instances_and_notify(key, list_result);
+                                act.update_instances_and_notify(key, list_result).unwrap_or_default();
                                 if let Some(list) = act.filter_instances(&param,ctx) {
-                                    sender.send(NamingQueryResult::List(list));
+                                    sender.send(NamingQueryResult::List(list)).unwrap_or_default();
                                     return;
                                 }
                             },
                             Err(_) => {},
                         }
-                        sender.send(NamingQueryResult::None);
+                        sender.send(NamingQueryResult::None).unwrap_or_default();
                     })
                     .spawn(ctx);
                 }
@@ -441,10 +439,10 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
                 if let Some(list) = self.filter_instances(&param,ctx) {
                     let index = NamingUtils::select_by_weight_fn(&list, |e| (e.weight*1000f32) as u64); 
                     if let Some(e) = list.get(index) {
-                        sender.send(NamingQueryResult::One(e.clone()));
+                        sender.send(NamingQueryResult::One(e.clone())).unwrap_or_default();
                     }
                     else{
-                        sender.send(NamingQueryResult::None);
+                        sender.send(NamingQueryResult::None).unwrap_or_default();
                     }
                 }
                 else{
@@ -457,18 +455,18 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
                         match res {
                             Ok(list_result) => {
                                 let key = param.get_key();
-                                act.update_instances_and_notify(key, list_result);
+                                act.update_instances_and_notify(key, list_result).unwrap_or_default();
                                 if let Some(list) = act.filter_instances(&param,ctx) {
                                     let index = NamingUtils::select_by_weight_fn(&list, |e| (e.weight*1000f32) as u64); 
                                     if let Some(e) = list.get(index) {
-                                        sender.send(NamingQueryResult::One(e.clone()));
+                                        sender.send(NamingQueryResult::One(e.clone())).unwrap_or_default();
                                         return;
                                     }
                                 }
                             },
                             Err(_) => {},
                         }
-                        sender.send(NamingQueryResult::None);
+                        sender.send(NamingQueryResult::None).unwrap_or_default();
                     })
                     .spawn(ctx); 
                 }
