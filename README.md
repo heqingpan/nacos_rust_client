@@ -49,7 +49,7 @@ let v=config_client.get_config(&key).await.unwrap();
 
 3. 配置监听器
 
-实时的接收服务端的变更推送，更新监听器的内容；用户应用配置动态下发。
+实时的接收服务端的变更推送，更新监听器的内容，用于应用配置动态下发。
 
 ```rust
 #[derive(Debug,Serialize,Deserialize,Default,Clone)]

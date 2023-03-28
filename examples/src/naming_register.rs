@@ -1,3 +1,4 @@
+#![allow(unused_imports,unreachable_code)]
 use nacos_rust_client::client::naming_client::{ServiceInstanceKey, InstanceDefaultListener};
 use std::sync::Arc;
 
