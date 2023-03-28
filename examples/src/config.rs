@@ -1,7 +1,7 @@
 use std::time::Duration;
 use std::sync::Arc;
 
-//use nacos_rust_client::client::{ HostInfo, AuthInfo };
+use nacos_rust_client::client::{ HostInfo, AuthInfo };
 use nacos_rust_client::client::config_client::{
     ConfigClient,ConfigKey,ConfigDefaultListener
 };

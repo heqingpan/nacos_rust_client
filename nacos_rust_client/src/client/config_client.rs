@@ -377,7 +377,7 @@ impl ConfigClient {
         r
     }
 
-    fn init_register(request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>) -> (Addr<ConfigInnerActor>,Addr<AuthActor>){
+    fn init_register(mut request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>) -> (Addr<ConfigInnerActor>,Addr<AuthActor>){
         let system_addr =  init_global_system_actor();
         let endpoint=request_client.endpoints.clone();
         let actor = AuthActor::new(endpoint,auth_info);
@@ -388,6 +388,7 @@ impl ConfigClient {
             super::nacos_client::ActixSystemResult::AuthActorAddr(auth_addr) => auth_addr,
             _ => panic!("init actor error"),
         };
+        request_client.set_auth_addr(auth_addr.clone());
         let actor = ConfigInnerActor::new(request_client);
         let (tx,rx) = std::sync::mpsc::sync_channel(1);
         let msg = ActixSystemCmd::ConfigInnerActor(actor,tx);

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use std::time::Duration;
 
-//use nacos_rust_client::client::{ HostInfo, AuthInfo };
+use nacos_rust_client::client::{ HostInfo, AuthInfo };
 use nacos_rust_client::client::{naming_client::{NamingClient, Instance,QueryInstanceListParams}};
 
 
