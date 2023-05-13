@@ -1,4 +1,5 @@
 pub mod client;
+pub mod grpc;
 
 pub use client::nacos_client::init_global_system_actor;
 pub use client::nacos_client::close_global_system_actor as close_current_system;
