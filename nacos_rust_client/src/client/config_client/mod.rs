@@ -6,6 +6,7 @@ pub mod config_key;
 pub mod listener;
 pub mod client;
 pub mod inner;
+pub mod inner_client;
 
 
 pub type ConfigClient =  self::client::ConfigClient;

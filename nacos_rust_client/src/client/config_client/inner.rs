@@ -4,7 +4,7 @@ use actix::prelude::*;
 
 use crate::client::get_md5;
 
-use super::{client::ConfigInnerRequestClient, config_key::ConfigKey, listener::{ConfigListener, ListenerValue}};
+use super::{config_key::ConfigKey, listener::{ConfigListener, ListenerValue}, inner_client::ConfigInnerRequestClient};
 
 pub struct ConfigInnerActor{
     pub request_client : ConfigInnerRequestClient,
