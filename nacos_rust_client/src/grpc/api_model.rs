@@ -41,6 +41,19 @@ impl BaseResponse {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionSetupRequest {
+    pub module:Option<String>,
+    pub request_id:Option<String>,
+    pub headers:HashMap<String,String>,
+
+    pub client_version:Option<String>,
+    pub tenant:Option<String>,
+    pub labels: HashMap<String,String>,
+    //pub abilities: Option<ClientAbilities>,
+}
+
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
