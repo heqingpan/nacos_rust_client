@@ -20,6 +20,7 @@ pub use self::naming_client::NamingClient;
 pub struct HostInfo {
     pub ip:String,
     pub port:u32,
+    pub grpc_port:u32,
 }
 
 pub fn now_millis() -> u64 {
@@ -41,21 +42,38 @@ impl HostInfo {
         Self {
             ip:ip.to_owned(),
             port,
+            grpc_port:port+1000,
+        }
+    }
+
+    pub fn new_with_grpc(ip:&str,port:u32,grpc_port:u32) -> Self {
+        Self {
+            ip:ip.to_owned(),
+            port,
+            grpc_port,
         }
     }
 
     pub fn parse(addr:&str) -> Self {
         let strs=addr.split(':').collect::<Vec<_>>();
         let mut port = 8848u32;
+        let mut grpc_port = port+1000;
         let ip = strs.get(0).unwrap_or(&"127.0.0.1");
         if let Some(p) = strs.get(1) {
-            let pstr = (*p).to_owned();
-            port=pstr.parse::<u32>().unwrap_or(8848u32);
-
+            let ports=p.split('#').collect::<Vec<_>>();
+            if let Some(p) = ports.get(0) {
+                let pstr = (*p).to_owned();
+                port=pstr.parse::<u32>().unwrap_or(8848u32);
+            }
+            if let Some(p) = ports.get(1) {
+                let pstr = (*p).to_owned();
+                grpc_port=pstr.parse::<u32>().unwrap_or(port+1000);
+            }
         }
         Self{
             ip:(*ip).to_owned(),
             port,
+            grpc_port,
         }
     }
 }

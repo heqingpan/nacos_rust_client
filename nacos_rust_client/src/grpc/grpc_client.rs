@@ -15,6 +15,7 @@ type ReceiverStreamType = tonic::Streaming<Payload>;
 type BiStreamSenderType = tokio::sync::mpsc::Sender<Option<Payload>>;
 type PayloadSenderType = tokio::sync::oneshot::Sender<Payload>;
 
+#[derive(Debug,Clone)]
 pub struct InnerGrpcClient {
     channel: Channel,
     //bi_request_stream_client: BiRequestStreamClient<Channel>,
