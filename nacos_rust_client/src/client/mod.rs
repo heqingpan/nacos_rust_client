@@ -16,7 +16,7 @@ pub use self::nacos_client::NacosClient;
 pub use self::config_client::ConfigClient;
 pub use self::naming_client::NamingClient;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,Default)]
 pub struct HostInfo {
     pub ip:String,
     pub port:u32,
