@@ -7,7 +7,7 @@ description = "nacos tonic discover "
 repository = "https://github.com/heqingpan/nacos_rust_client"
 readme = "README.md"
 keywords = ["nacos", "tonic", "discover"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
