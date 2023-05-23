@@ -64,7 +64,7 @@ impl ConfigClient {
             _ => panic!("init actor error"),
         };
         request_client.set_auth_addr(auth_addr.clone());
-        let actor = ConfigInnerActor::new(request_client);
+        let actor = ConfigInnerActor::new(request_client,None,false);
         let (tx,rx) = std::sync::mpsc::sync_channel(1);
         let msg = ActixSystemCmd::ConfigInnerActor(actor,tx);
         system_addr.do_send(msg);

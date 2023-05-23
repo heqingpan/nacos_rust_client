@@ -163,3 +163,7 @@ impl Client {
 }
 
 
+pub enum ProtocolMode {
+    Http,
+    Grpc,
+}

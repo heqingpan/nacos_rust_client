@@ -56,19 +56,29 @@ impl ConnManage {
 impl Actor for ConnManage {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
-        log::info!("ConnManage started")
+    fn started(&mut self, _ctx: &mut Self::Context) {
+        log::info!("ConnManage started");
+        self.init_grpc_conn();
     }
 }
 
 impl Handler<ConnCmd> for ConnManage {
-    type Result=anyhow::Result<ConnMsgResult>;
+    type Result=ResponseActFuture<Self,anyhow::Result<ConnMsgResult>>;
 
     fn handle(&mut self, msg: ConnCmd, ctx: &mut Self::Context) -> Self::Result {
-        match msg {
-            ConnCmd::ConfigCmd(_) => todo!(),
-            ConnCmd::NamingCmd(_) => todo!(),
-        }
-        Ok(ConnMsgResult::None)
+        let conn = self.conns.get(self.current_index).unwrap();
+        let conn_addr =conn.grpc_client_addr.clone();
+        let fut=async move {
+            if let Some(conn_addr) = conn_addr {
+                let res:ConnMsgResult= conn_addr.send(msg).await??;
+                Ok(res)
+            }
+            else{
+                Err(anyhow::anyhow!("grpc conn is empty"))
+            }
+        }.into_actor(self)
+        .map(|r,_act,_ctx|{r});
+        Box::pin(fut)
+
     }
 }

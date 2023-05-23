@@ -2,13 +2,15 @@ use std::{collections::HashMap, time::Duration};
 
 use actix::prelude::*;
 
-use crate::client::get_md5;
+use crate::{client::get_md5, conn_manage::manage::ConnManage};
 
 use super::{config_key::ConfigKey, listener::{ConfigListener, ListenerValue}, inner_client::ConfigInnerRequestClient};
 
 pub struct ConfigInnerActor{
     pub request_client : ConfigInnerRequestClient,
     subscribe_map:HashMap<ConfigKey,ListenerValue>,
+    conn_manage:Option<Addr<ConnManage>>,
+    use_grpc:bool,
 }
 
 
@@ -28,10 +30,12 @@ pub enum ConfigInnerHandleResult {
 }
 
 impl ConfigInnerActor{
-    pub(crate) fn new(request_client:ConfigInnerRequestClient) -> Self{
+    pub(crate) fn new(request_client:ConfigInnerRequestClient,conn_manage:Option<Addr<ConnManage>>,use_grpc:bool) -> Self{
         Self { 
             request_client,
             subscribe_map: Default::default(),
+            conn_manage,
+            use_grpc
         }
     }
 
