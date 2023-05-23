@@ -1,12 +1,10 @@
 use std::{sync::Arc};
-use actix::prelude::*;
 
-use actix::{Addr, Actor};
+use actix::{Actor, Addr};
 use tonic::transport::Channel;
 
 use crate::{grpc::grpc_client::InnerGrpcClient, client::{HostInfo, AuthInfo}};
 
-use super::conn_msg::{ConnCmd, ConnMsgResult};
 use super::{breaker::{Breaker, BreakerConfig}};
 
 
@@ -54,24 +52,4 @@ impl InnerConn {
         Ok(())
     }
 
-}
-
-impl Actor for InnerConn {
-    type Context = Context<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        log::info!("InnerConn started")
-    }
-}
-
-impl Handler<ConnCmd> for InnerConn {
-    type Result=anyhow::Result<ConnMsgResult>;
-
-    fn handle(&mut self, msg: ConnCmd, ctx: &mut Self::Context) -> Self::Result {
-        match msg {
-            ConnCmd::ConfigCmd(_) => todo!(),
-            ConnCmd::NamingCmd(_) => todo!(),
-        }
-        Ok(ConnMsgResult::None)
-    }
 }

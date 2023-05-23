@@ -111,7 +111,7 @@ pub struct ConfigQueryResponse{
     pub message:Option<String>,
     pub request_id:Option<String>,
 
-    pub content:Arc<String>,
+    pub content:String,
     pub encrypted_data_key:Option<String>,
     pub content_type:Option<String>,
     pub md5:Option<Arc<String>>,

@@ -4,16 +4,16 @@ use actix::prelude::*;
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 
-use crate::grpc::{channel::CloseableChannel, api_model::ConnectionSetupRequest, utils::PayloadUtils};
+use crate::{grpc::{channel::CloseableChannel, api_model::ConnectionSetupRequest, utils::PayloadUtils}, conn_manage::{conn_msg::{ConnCmd, ConnMsgResult, ConfigRequest,NamingRequest, ConfigResponse } }};
 
-use super::nacos_proto::{
+use super::{nacos_proto::{
     bi_request_stream_client::BiRequestStreamClient, request_client::RequestClient, Payload,
-};
+}, api_model::{ConfigQueryRequest, ConfigQueryResponse}};
 
 //type SenderType = tokio::sync::mpsc::Sender<Result<Payload, tonic::Status>>;
 type ReceiverStreamType = tonic::Streaming<Payload>;
 type BiStreamSenderType = tokio::sync::mpsc::Sender<Option<Payload>>;
-type PayloadSenderType = tokio::sync::oneshot::Sender<Payload>;
+type PayloadSenderType = tokio::sync::oneshot::Sender<Result<Payload,String>>;
 
 #[derive(Debug,Clone)]
 pub struct InnerGrpcClient {
@@ -142,12 +142,15 @@ impl InnerGrpcClient {
             match response{
                 Ok(response) => {
                     let res= response.into_inner();
-                    log::info!("check response:{}",&PayloadUtils::get_payload_string(&res));
+                    log::info!("check response:{}",&PayloadUtils::get_payload_header(&res));
                     if let Some(sender) = sender {
-                        sender.send(res).ok();
+                        sender.send(Ok(res)).ok();
                     }
                 },
                 Err(err) => {
+                    if let Some(sender) = sender {
+                        sender.send(Err("request error".to_owned())).ok();
+                    }
                     log::error!("do_request error, {:?}",&err);
                 },
             };
@@ -188,6 +191,7 @@ impl Actor for InnerGrpcClient {
 #[rtype(result = "anyhow::Result<InnerGrpcClientResult>")]
 pub enum InnerGrpcClientCmd {
     ReceiverStreamItem(Payload),
+    Request(Payload,Option<PayloadSenderType>),
     Ping,
 }
 
@@ -198,7 +202,7 @@ pub enum InnerGrpcClientResult {
 impl Handler<InnerGrpcClientCmd> for InnerGrpcClient {
     type Result = anyhow::Result<InnerGrpcClientResult>;
 
-    fn handle(&mut self, msg: InnerGrpcClientCmd, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: InnerGrpcClientCmd, ctx: &mut Self::Context) -> Self::Result {
         match msg {
             InnerGrpcClientCmd::ReceiverStreamItem(_payload) => {
                 Ok(InnerGrpcClientResult::None)
@@ -206,7 +210,67 @@ impl Handler<InnerGrpcClientCmd> for InnerGrpcClient {
             InnerGrpcClientCmd::Ping => {
                 Ok(InnerGrpcClientResult::None)
             },
+            InnerGrpcClientCmd::Request(payload,sender) => {
+                self.do_request(ctx, payload, sender);
+                Ok(InnerGrpcClientResult::None)
+            },
         }
+    }
+}
+
+impl Handler<ConnCmd> for InnerGrpcClient {
+    type Result=ResponseActFuture<Self,anyhow::Result<ConnMsgResult>>;
+
+    fn handle(&mut self, msg: ConnCmd, ctx: &mut Self::Context) -> Self::Result {
+        let self_addr = ctx.address();
+        let fut=async move {
+            match msg {
+                ConnCmd::ConfigCmd(config_request) => {
+                    match config_request {
+                        ConfigRequest::GetConfig(config_key) => {
+                            let request = ConfigQueryRequest {
+                                data_id:config_key.data_id,
+                                group:config_key.group,
+                                tenant:config_key.tenant,
+                                ..Default::default()
+                            };
+                            let val = serde_json::to_string(&request).unwrap();
+                            let payload = PayloadUtils::build_payload("ConfigQueryRequest", val);
+                            let (tx,rx) = tokio::sync::oneshot::channel();
+                            self_addr.do_send(InnerGrpcClientCmd::Request(payload, Some(tx)));
+                            let res =rx.await?;
+                            match res {
+                                Ok(payload) => {
+                                    let body_vec = payload.body.unwrap_or_default().value;
+                                    let response:ConfigQueryResponse= serde_json::from_slice(&body_vec)?;
+                                    return Ok(ConnMsgResult::ConfigResult(ConfigResponse::ConfigValue(response.content)));
+                                },
+                                Err(s) => {
+                                    return Err(anyhow::anyhow!(s))
+                                },
+                            }
+                        },
+                        ConfigRequest::SetConfig(_, _) => todo!(),
+                        ConfigRequest::DeleteConfig(_) => todo!(),
+                        ConfigRequest::V1Listen(_) => todo!(),
+                        ConfigRequest::Listen(_) => todo!(),
+                    }
+                },
+                ConnCmd::NamingCmd(naming_request) => {
+                    match naming_request {
+                        NamingRequest::Register(_) => todo!(),
+                        NamingRequest::Unregister(_) => todo!(),
+                        NamingRequest::Subscribe(_) => todo!(),
+                        NamingRequest::Unsubscribe(_) => todo!(),
+                        NamingRequest::QueryInstance(_) => todo!(),
+                        NamingRequest::V1Heartbeat(_) => todo!(),
+                    }
+                },
+            };
+            Ok(ConnMsgResult::None)
+        }.into_actor(self)
+        .map(|r,_,_|{r});
+        Box::pin(fut)
     }
 }
 
