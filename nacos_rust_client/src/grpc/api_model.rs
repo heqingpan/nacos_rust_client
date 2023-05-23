@@ -139,7 +139,7 @@ pub struct ConfigListenContext {
     pub data_id: String,
     pub group: String,
     pub tenant: String,
-    pub md5: Arc<String>,
+    pub md5: String,
     pub tag: Option<String>,
 }
 
@@ -158,9 +158,9 @@ pub struct ConfigBatchListenRequest {
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigContext {
-    pub data_id: Arc<String>,
-    pub group: Arc<String>,
-    pub tenant: Arc<String>,
+    pub data_id: String,
+    pub group: String,
+    pub tenant: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]

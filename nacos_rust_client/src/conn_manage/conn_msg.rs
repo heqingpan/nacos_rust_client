@@ -10,13 +10,13 @@ pub enum ConfigRequest{
     SetConfig(ConfigKey,String),
     DeleteConfig(ConfigKey),
     V1Listen(String),  // 兼容v1版本协议
-    Listen(Vec<ConfigKey>),
+    Listen(Vec<(ConfigKey,String)>,bool),  //(key,md5)
 }
 
 #[derive(Debug)]
 pub enum ConfigResponse{
     ConfigValue(String),
-    None,
+    ChangeKeys(Vec<ConfigKey>),
 }
 
 #[derive(Debug)]
@@ -32,7 +32,6 @@ pub enum NamingRequest {
 #[derive(Debug)]
 pub enum NamingResponse{
     Instances(Vec<Arc<Instance>>),
-    None
 }
 
 

@@ -236,8 +236,12 @@ impl Handler<ConnCmd> for InnerGrpcClient {
                         ConfigRequest::DeleteConfig(config_key) => {
                             return InnerRequestUtils::config_remove(channel,config_key).await;
                         },
-                        ConfigRequest::V1Listen(_) => todo!(),
-                        ConfigRequest::Listen(_keys) => todo!(),
+                        ConfigRequest::V1Listen(_) => {
+                            return Err(anyhow::anyhow!("not support"));
+                        },
+                        ConfigRequest::Listen(listen_items,listen) => {
+                            return InnerRequestUtils::config_change_batch_listen(channel,listen_items,listen).await;
+                        },
                     }
                 },
                 ConnCmd::NamingCmd(naming_request) => {
