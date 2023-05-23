@@ -4,11 +4,11 @@ use actix::prelude::*;
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 
-use crate::{grpc::{channel::CloseableChannel, api_model::ConnectionSetupRequest, utils::PayloadUtils}, conn_manage::{conn_msg::{ConnCmd, ConnMsgResult, ConfigRequest,NamingRequest, ConfigResponse } }};
+use crate::{grpc::{channel::CloseableChannel, api_model::ConnectionSetupRequest, utils::PayloadUtils}, conn_manage::{conn_msg::{ConnCmd, ConnMsgResult, ConfigRequest,NamingRequest,}},};
 
 use super::{nacos_proto::{
     bi_request_stream_client::BiRequestStreamClient, request_client::RequestClient, Payload,
-}, api_model::{ConfigQueryRequest, ConfigQueryResponse}};
+}, inner_request_utils::InnerRequestUtils};
 
 //type SenderType = tokio::sync::mpsc::Sender<Result<Payload, tonic::Status>>;
 type ReceiverStreamType = tonic::Streaming<Payload>;
@@ -222,38 +222,22 @@ impl Handler<ConnCmd> for InnerGrpcClient {
     type Result=ResponseActFuture<Self,anyhow::Result<ConnMsgResult>>;
 
     fn handle(&mut self, msg: ConnCmd, ctx: &mut Self::Context) -> Self::Result {
-        let self_addr = ctx.address();
+        let channel = self.channel.clone();
         let fut=async move {
             match msg {
                 ConnCmd::ConfigCmd(config_request) => {
                     match config_request {
                         ConfigRequest::GetConfig(config_key) => {
-                            let request = ConfigQueryRequest {
-                                data_id:config_key.data_id,
-                                group:config_key.group,
-                                tenant:config_key.tenant,
-                                ..Default::default()
-                            };
-                            let val = serde_json::to_string(&request).unwrap();
-                            let payload = PayloadUtils::build_payload("ConfigQueryRequest", val);
-                            let (tx,rx) = tokio::sync::oneshot::channel();
-                            self_addr.do_send(InnerGrpcClientCmd::Request(payload, Some(tx)));
-                            let res =rx.await?;
-                            match res {
-                                Ok(payload) => {
-                                    let body_vec = payload.body.unwrap_or_default().value;
-                                    let response:ConfigQueryResponse= serde_json::from_slice(&body_vec)?;
-                                    return Ok(ConnMsgResult::ConfigResult(ConfigResponse::ConfigValue(response.content)));
-                                },
-                                Err(s) => {
-                                    return Err(anyhow::anyhow!(s))
-                                },
-                            }
+                            return InnerRequestUtils::config_query(channel,config_key).await;
                         },
-                        ConfigRequest::SetConfig(_, _) => todo!(),
-                        ConfigRequest::DeleteConfig(_) => todo!(),
+                        ConfigRequest::SetConfig(config_key, content) => {
+                            return InnerRequestUtils::config_publish(channel,config_key,content).await;
+                        },
+                        ConfigRequest::DeleteConfig(config_key) => {
+                            return InnerRequestUtils::config_remove(channel,config_key).await;
+                        },
                         ConfigRequest::V1Listen(_) => todo!(),
-                        ConfigRequest::Listen(_) => todo!(),
+                        ConfigRequest::Listen(_keys) => todo!(),
                     }
                 },
                 ConnCmd::NamingCmd(naming_request) => {

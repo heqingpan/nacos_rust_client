@@ -86,7 +86,7 @@ pub struct ConfigPublishRequest {
     pub data_id: String,
     pub group: String,
     pub tenant: String,
-    pub content: Arc<String>,
+    pub content: String,
     pub cas_md5: Option<String>,
     pub addition_map:HashMap<String,String>,
 }
