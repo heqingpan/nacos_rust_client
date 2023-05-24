@@ -1,5 +1,5 @@
 
-#[derive(Debug,Hash,Eq,Clone)]
+#[derive(Debug,Hash,Eq,Clone,Default)]
 pub struct ConfigKey {
     pub data_id:String,
     pub group:String,

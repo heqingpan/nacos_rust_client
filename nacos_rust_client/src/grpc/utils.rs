@@ -66,4 +66,11 @@ impl PayloadUtils {
         }
         None
     }
+
+    pub fn get_metadata_type<'a>(metadata: &'a Option<nacos_proto::Metadata>) -> Option<&'a String> {
+        if let Some(meta) = metadata {
+            return Some(&meta.r#type);
+        }
+        None
+    }
 }

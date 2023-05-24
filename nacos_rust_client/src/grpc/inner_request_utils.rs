@@ -1,6 +1,6 @@
 use tonic::transport::Channel;
 
-use crate::{client::config_client::ConfigKey, conn_manage::conn_msg::{ConnMsgResult, ConfigResponse}};
+use crate::{client::{config_client::ConfigKey, get_md5}, conn_manage::conn_msg::{ConnMsgResult, ConfigResponse}};
 
 use super::{api_model::{ConfigQueryRequest, ConfigQueryResponse, ConfigPublishRequest, BaseResponse, ConfigRemoveRequest, ConfigBatchListenRequest, ConfigListenContext, ConfigChangeBatchListenResponse}, utils::PayloadUtils, nacos_proto::request_client::RequestClient};
 
@@ -23,7 +23,8 @@ impl InnerRequestUtils {
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let body_vec = response.into_inner().body.unwrap_or_default().value;
         let response:ConfigQueryResponse= serde_json::from_slice(&body_vec)?;
-        Ok(ConnMsgResult::ConfigResult(ConfigResponse::ConfigValue(response.content)))
+        let md5 = response.md5.unwrap_or_else(||get_md5(&response.content));
+        Ok(ConnMsgResult::ConfigResult(ConfigResponse::ConfigValue(response.content,md5)))
     }
 
     pub async fn config_publish(channel:Channel,config_key:ConfigKey,content:String) -> anyhow::Result<ConnMsgResult> {

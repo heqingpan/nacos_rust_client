@@ -114,7 +114,7 @@ pub struct ConfigQueryResponse{
     pub content:String,
     pub encrypted_data_key:Option<String>,
     pub content_type:Option<String>,
-    pub md5:Option<Arc<String>>,
+    pub md5:Option<String>,
     pub last_modified:u64,
     pub beta:bool,
     pub tag: Option<String>,
@@ -181,9 +181,9 @@ pub struct ConfigChangeNotifyRequest {
     pub request_id:Option<String>,
     pub headers:HashMap<String,String>,
 
-    pub data_id: Arc<String>,
-    pub group: Arc<String>,
-    pub tenant: Arc<String>,
+    pub data_id: String,
+    pub group: String,
+    pub tenant: String,
 }
 
 // ----- naming model -----

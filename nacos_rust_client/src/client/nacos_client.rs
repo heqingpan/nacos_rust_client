@@ -1,6 +1,7 @@
 
 use crate::client::ConfigClient;
 use crate::client::NamingClient;
+use crate::conn_manage::manage::ConnManage;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -74,6 +75,7 @@ pub enum ActixSystemCmd
     UdpWorker(UdpWorker,ActixSystemResultSender),
     InnerNamingListener(InnerNamingListener,ActixSystemResultSender),
     InnerNamingRegister(InnerNamingRegister,ActixSystemResultSender),
+    ConnManage(ConnManage,ActixSystemResultSender),
     Close,
 }
 
@@ -84,6 +86,7 @@ pub enum ActixSystemResult {
     UdpWorker(Addr<UdpWorker>),
     InnerNamingListener(Addr<InnerNamingListener>),
     InnerNamingRegister(Addr<InnerNamingRegister>),
+    ConnManage(Addr<ConnManage>),
 }
 
 impl Handler<ActixSystemCmd> for ActixSystemActor 
@@ -111,6 +114,10 @@ impl Handler<ActixSystemCmd> for ActixSystemActor
             ActixSystemCmd::InnerNamingRegister(actor, tx) => {
                 let addr = actor.start();
                 tx.send(ActixSystemResult::InnerNamingRegister(addr)).unwrap_or_default();
+            },
+            ActixSystemCmd::ConnManage(actor,tx) => {
+                let addr = actor.start();
+                tx.send(ActixSystemResult::ConnManage(addr)).unwrap_or_default();
             },
             ActixSystemCmd::Close => {
                 if let Some(naming_client) = &self.last_naming_client {

@@ -1,15 +1,15 @@
 use std::{collections::HashMap, time::Duration};
 
-use actix::prelude::*;
+use actix::{prelude::*, WeakAddr};
 
-use crate::{client::get_md5, conn_manage::manage::ConnManage};
+use crate::{client::get_md5, conn_manage::{manage::{ConnManage, ConnManageCmd}, conn_msg::{ConnCmd, ConfigRequest}}};
 
-use super::{config_key::ConfigKey, listener::{ConfigListener, ListenerValue}, inner_client::ConfigInnerRequestClient};
+use super::{config_key::ConfigKey, listener::{ConfigListener, ListenerValue}, inner_client::ConfigInnerRequestClient, model::NotifyConfigItem};
 
 pub struct ConfigInnerActor{
     pub request_client : ConfigInnerRequestClient,
     subscribe_map:HashMap<ConfigKey,ListenerValue>,
-    conn_manage:Option<Addr<ConnManage>>,
+    conn_manage:Option<WeakAddr<ConnManage>>,
     use_grpc:bool,
 }
 
@@ -21,6 +21,7 @@ pub struct ConfigInnerActor{
 pub enum ConfigInnerCmd {
     SUBSCRIBE(ConfigKey,u64,String,Box<dyn ConfigListener + Send + 'static>),
     REMOVE(ConfigKey,u64),
+    Notify(Vec<NotifyConfigItem>),
     Close,
 }
 
@@ -30,7 +31,8 @@ pub enum ConfigInnerHandleResult {
 }
 
 impl ConfigInnerActor{
-    pub(crate) fn new(request_client:ConfigInnerRequestClient,conn_manage:Option<Addr<ConnManage>>,use_grpc:bool) -> Self{
+    pub(crate) fn new(request_client:ConfigInnerRequestClient,conn_manage:Option<WeakAddr<ConnManage>>) -> Self{
+        let use_grpc = conn_manage.is_some();
         Self { 
             request_client,
             subscribe_map: Default::default(),
@@ -100,6 +102,11 @@ impl Actor for ConfigInnerActor {
 
     fn started(&mut self,ctx:&mut Self::Context){
         log::info!("ConfigInnerActor started");
+        if let Some(addr) = &self.conn_manage {
+            if let Some(addr) = addr.upgrade() {
+                addr.do_send(ConnManageCmd::ConfigInnerActorAddr(ctx.address().downgrade()));
+            }
+        }
         ctx.run_later(Duration::from_millis(5), |act,ctx|{
             act.listener(ctx);
         });
@@ -121,7 +128,14 @@ impl Handler<ConfigInnerCmd> for ConfigInnerActor {
                         }
                     },
                     None => {
-                        let v = ListenerValue::new(vec![(id,func)],md5);
+                        let v = ListenerValue::new(vec![(id,func)],md5.clone());
+                        if self.use_grpc {
+                            if let Some(addr) = &self.conn_manage {
+                                if let Some(addr) = addr.upgrade() {
+                                    addr.do_send(ConnCmd::ConfigCmd(ConfigRequest::Listen(vec![(key.clone(),md5.clone())],true)));
+                                }
+                            }
+                        }
                         self.subscribe_map.insert(key, v);
                     },
                 };
@@ -138,7 +152,15 @@ impl Handler<ConfigInnerCmd> for ConfigInnerActor {
                     Some(v) => {
                         let size=v.remove(id);
                         if size == 0 {
-                            self.subscribe_map.remove(&key);
+                            if let Some(_)=self.subscribe_map.remove(&key) {
+                                if self.use_grpc {
+                                    if let Some(addr) = &self.conn_manage {
+                                        if let Some(addr) = addr.upgrade() {
+                                            addr.do_send(ConnCmd::ConfigCmd(ConfigRequest::Listen(vec![(key.clone(),"".to_owned())],false)));
+                                        }
+                                    }
+                                }
+                            }
                         }
                     },
                     None => {},
@@ -146,9 +168,16 @@ impl Handler<ConfigInnerCmd> for ConfigInnerActor {
                 Ok(ConfigInnerHandleResult::None)
             },
             ConfigInnerCmd::Close => {
+                self.conn_manage = None;
                 ctx.stop();
                 Ok(ConfigInnerHandleResult::None)
             },
+            ConfigInnerCmd::Notify(items) => {
+                for item in items {
+                    self.do_change_config(&item.key , item.content);
+                }
+                Ok(ConfigInnerHandleResult::None)
+            }
         }
     }
 }

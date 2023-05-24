@@ -15,7 +15,7 @@ pub enum ConfigRequest{
 
 #[derive(Debug)]
 pub enum ConfigResponse{
-    ConfigValue(String),
+    ConfigValue(String,String),
     ChangeKeys(Vec<ConfigKey>),
 }
 
@@ -46,4 +46,12 @@ pub enum ConnMsgResult {
     ConfigResult(ConfigResponse),
     NamingRequest(ConfigResponse),
     None,
+}
+
+
+#[derive(Debug, Message)]
+#[rtype(result = "anyhow::Result<()>")]
+pub enum ConnCallbackMsg {
+    ConfigChange(ConfigKey,String,String),
+    InstanceChange(ServiceInstanceKey,Vec<Instance>),
 }

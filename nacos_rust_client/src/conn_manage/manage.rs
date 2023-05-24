@@ -2,26 +2,28 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use actix::prelude::*;
+use actix::{prelude::*, WeakAddr};
 
-use crate::client::{AuthInfo, HostInfo, naming_client::NamingUtils};
+use crate::{client::{AuthInfo, HostInfo, naming_client::NamingUtils, config_client::{inner::ConfigInnerCmd, model::NotifyConfigItem, ConfigInnerActor}, nacos_client::{ActixSystemCmd, ActixSystemResult}}, init_global_system_actor, ActixSystemCreateCmd, ActorCreate};
 
-use super::{inner_conn::InnerConn, breaker::BreakerConfig, conn_msg::{ConnCmd, ConnMsgResult}};
+use super::{inner_conn::InnerConn, breaker::BreakerConfig, conn_msg::{ConnCmd, ConnMsgResult, ConnCallbackMsg}, NotifyCallbackAddr};
 
-#[derive(Default,Debug)]
-pub(crate) struct ConnManage {
+#[derive(Default,Clone)]
+pub struct ConnManage {
     conns: Vec<InnerConn>,
     conn_map: HashMap<u32,u32>,
     current_index:usize,
     support_grpc: bool,
-    auth_info:Option<Arc<AuthInfo>>,
+    auth_info:Option<AuthInfo>,
     conn_globda_id:u32,
     breaker_config:Arc<BreakerConfig>,
+    pub(crate) callback: NotifyCallbackAddr,
 }
 
 impl ConnManage {
-    pub fn new(hosts:Vec<HostInfo>,support_grpc: bool,auth_info:Option<Arc<AuthInfo>>,breaker_config:Arc<BreakerConfig>) -> Self {
+    pub fn new(hosts:Vec<HostInfo>,support_grpc: bool,auth_info:Option<AuthInfo>,breaker_config:BreakerConfig) -> Self {
         let mut id = 0;
+        let breaker_config=Arc::new(breaker_config);
         let mut conns = Vec::with_capacity(hosts.len());
         let mut conn_map = HashMap::new();
         for host in hosts {
@@ -30,7 +32,7 @@ impl ConnManage {
             id+=1;
             conns.push(conn);
         }
-        let mut s=Self {
+        Self {
             conns,
             conn_map,
             support_grpc,
@@ -38,14 +40,27 @@ impl ConnManage {
             conn_globda_id:id,
             breaker_config,
             ..Default::default()
-        };
-        s
+        }
     }
 
-    pub fn init_grpc_conn(&mut self) {
+    pub fn init_grpc_conn(&mut self,ctx: &mut Context<Self>) {
         self.current_index = self.select_index();
         let conn = self.conns.get_mut(self.current_index).unwrap();
-        conn.init_grpc().ok();
+        let addr = ctx.address().downgrade();
+        conn.init_grpc(addr).ok();
+    }
+
+    pub fn start_at_global_system(self) -> Addr<Self> {
+        let system_addr =  init_global_system_actor();
+        let (tx,rx) = std::sync::mpsc::sync_channel(1);
+        let msg =ActixSystemCmd::ConnManage(self,tx);
+        system_addr.do_send(msg);
+        if let ActixSystemResult::ConnManage(addr) = rx.recv().unwrap() {
+            addr
+        }
+        else{
+            panic!("create manage actor error")
+        }
     }
 
     fn select_index(&self) -> usize {
@@ -53,12 +68,64 @@ impl ConnManage {
     }
 }
 
+impl ActorCreate for ConnManage {
+    fn create(&self) -> () {
+        ()
+    }
+}
+
 impl Actor for ConnManage {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {
+    fn started(&mut self, ctx: &mut Self::Context) {
         log::info!("ConnManage started");
-        self.init_grpc_conn();
+        self.init_grpc_conn(ctx);
+    }
+}
+
+#[derive(Message)]
+#[rtype(result = "anyhow::Result<()>")]
+pub enum ConnManageCmd{
+    ConfigInnerActorAddr(WeakAddr<ConfigInnerActor>),
+}
+
+impl Handler<ConnManageCmd> for ConnManage {
+    type Result=anyhow::Result<()>;
+
+    fn handle(&mut self, msg: ConnManageCmd, ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            ConnManageCmd::ConfigInnerActorAddr(addr) => {
+                self.callback.config_inner_addr = Some(addr);
+            },
+        }
+        Ok(())
+    }
+}
+
+impl Handler<ConnCallbackMsg> for ConnManage {
+    type Result=ResponseActFuture<Self,anyhow::Result<()>>;
+    fn handle(&mut self, msg: ConnCallbackMsg, _ctx: &mut Self::Context) -> Self::Result {
+        let callbacb = self.callback.clone();
+        let fut=async move {
+            match msg {
+                ConnCallbackMsg::ConfigChange(config_key,content,md5) => {
+                    if let Some(config_addr)=callbacb.config_inner_addr {
+                        if let Some(config_addr)=config_addr.upgrade() {
+                            config_addr.do_send(ConfigInnerCmd::Notify(vec![NotifyConfigItem{
+                                key:config_key,
+                                content,
+                                md5,
+                            }]));
+                        }
+                    }
+                },
+                ConnCallbackMsg::InstanceChange(_, _) => todo!(),
+            }
+            //...
+            Ok(())
+        }.into_actor(self)
+        .map(|r,_act,_ctx|{r});
+        Box::pin(fut)
     }
 }
 
