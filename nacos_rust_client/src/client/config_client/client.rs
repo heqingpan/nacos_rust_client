@@ -2,7 +2,7 @@ use std::{sync::Arc};
 
 use actix::{Addr, WeakAddr};
 
-use crate::{client::{HostInfo, nacos_client::{ActixSystemActorSetCmd, ActixSystemCmd, ActixSystemResult}, AuthInfo, ServerEndpointInfo, auth::AuthActor, get_md5}, init_global_system_actor, conn_manage::manage::ConnManage};
+use crate::{client::{HostInfo, nacos_client::{ActixSystemActorSetCmd, ActixSystemCmd, ActixSystemResult}, AuthInfo, ServerEndpointInfo, auth::AuthActor, get_md5}, init_global_system_actor, conn_manage::{manage::ConnManage, conn_msg::{ConfigRequest, ConfigResponse}}};
 
 use super::{ config_key::ConfigKey, listener::{ConfigListener}, inner::{ConfigInnerActor, ConfigInnerCmd}, inner_client::ConfigInnerRequestClient};
 
@@ -12,7 +12,7 @@ pub struct ConfigClient{
     tenant:String,
     request_client:ConfigInnerRequestClient,
     config_inner_addr: Addr<ConfigInnerActor> ,
-    conn_manage_addr: Option<Addr<ConnManage>>,
+    conn_manage_addr: Addr<ConnManage>,
 }
 
 impl Drop for ConfigClient {
@@ -34,7 +34,7 @@ impl ConfigClient {
             tenant,
             request_client,
             config_inner_addr,
-            conn_manage_addr:Some(conn_manage_addr),
+            conn_manage_addr:conn_manage_addr,
         });
         let system_addr = init_global_system_actor();
         system_addr.do_send(ActixSystemActorSetCmd::LastConfigClient(r.clone()));
@@ -52,7 +52,7 @@ impl ConfigClient {
             tenant,
             request_client,
             config_inner_addr,
-            conn_manage_addr:Some(conn_manage_addr),
+            conn_manage_addr:conn_manage_addr,
         });
         let system_addr = init_global_system_actor();
         system_addr.do_send(ActixSystemActorSetCmd::LastConfigClient(r.clone()));
@@ -91,20 +91,35 @@ impl ConfigClient {
     }
 
     pub async fn get_config(&self,key:&ConfigKey) -> anyhow::Result<String> {
-        self.request_client.get_config(key).await
+        let cmd = ConfigRequest::GetConfig(key.clone());
+        let res:ConfigResponse= self.conn_manage_addr.send(cmd).await??;
+        match res {
+            ConfigResponse::ConfigValue(content, _md5) => {
+                Ok(content)
+            },
+            _ => {
+                Err(anyhow::anyhow!("get config error"))
+            }
+        }
     }
 
     pub async fn set_config(&self,key:&ConfigKey,value:&str) -> anyhow::Result<()> {
-        self.request_client.set_config(key,value).await
+        let cmd = ConfigRequest::SetConfig(key.clone(),value.to_owned());
+        let _res:ConfigResponse= self.conn_manage_addr.send(cmd).await??;
+        Ok(())
     }
 
     pub async fn del_config(&self,key:&ConfigKey) -> anyhow::Result<()> {
-        self.request_client.del_config(key).await
+        let cmd = ConfigRequest::DeleteConfig(key.clone());
+        let _res:ConfigResponse= self.conn_manage_addr.send(cmd).await??;
+        Ok(())
     }
 
-    pub async fn listene(&self,content:&str,timeout:Option<u64>) -> anyhow::Result<Vec<ConfigKey>> {
+    /*
+    pub(crate) async fn listene(&self,content:&str,timeout:Option<u64>) -> anyhow::Result<Vec<ConfigKey>> {
         self.request_client.listene(content, timeout).await
     }
+    */
 
     pub async fn subscribe<T:ConfigListener + Send + 'static>(&self,listener:Box<T>) -> anyhow::Result<()> {
         let key = listener.get_key();

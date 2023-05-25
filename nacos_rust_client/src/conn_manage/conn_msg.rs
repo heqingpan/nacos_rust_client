@@ -4,7 +4,8 @@ use actix::prelude::*;
 
 use crate::client::{config_client::ConfigKey, naming_client::{Instance, QueryInstanceListParams, ServiceInstanceKey}};
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[rtype(result = "anyhow::Result<ConfigResponse>")]
 pub enum ConfigRequest{
     GetConfig(ConfigKey),
     SetConfig(ConfigKey,String),
@@ -15,11 +16,13 @@ pub enum ConfigRequest{
 
 #[derive(Debug)]
 pub enum ConfigResponse{
-    ConfigValue(String,String),
+    ConfigValue(String,String), // (content,md5)
     ChangeKeys(Vec<ConfigKey>),
+    None,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Message)]
+#[rtype(result = "anyhow::Result<NamingResponse>")]
 pub enum NamingRequest {
     Register(Vec<Instance>),
     Unregister(Vec<Instance>),
@@ -32,22 +35,8 @@ pub enum NamingRequest {
 #[derive(Debug)]
 pub enum NamingResponse{
     Instances(Vec<Arc<Instance>>),
-}
-
-
-#[derive(Debug, Message)]
-#[rtype(result = "anyhow::Result<ConnMsgResult>")]
-pub enum ConnCmd {
-    ConfigCmd(ConfigRequest),
-    NamingCmd(NamingRequest),
-}
-
-pub enum ConnMsgResult {
-    ConfigResult(ConfigResponse),
-    NamingRequest(ConfigResponse),
     None,
 }
-
 
 #[derive(Debug, Message)]
 #[rtype(result = "anyhow::Result<()>")]

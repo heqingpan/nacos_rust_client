@@ -4,9 +4,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use actix::{prelude::*, WeakAddr};
 
-use crate::{client::{AuthInfo, HostInfo, naming_client::NamingUtils, config_client::{inner::ConfigInnerCmd, model::NotifyConfigItem, ConfigInnerActor}, nacos_client::{ActixSystemCmd, ActixSystemResult}}, init_global_system_actor, ActixSystemCreateCmd, ActorCreate};
+use crate::{client::{AuthInfo, HostInfo, naming_client::NamingUtils, config_client::{inner::ConfigInnerCmd, model::NotifyConfigItem, ConfigInnerActor}, nacos_client::{ActixSystemCmd, ActixSystemResult}}, init_global_system_actor, ActorCreate};
 
-use super::{inner_conn::InnerConn, breaker::BreakerConfig, conn_msg::{ConnCmd, ConnMsgResult, ConnCallbackMsg}, NotifyCallbackAddr};
+use super::{inner_conn::InnerConn, breaker::BreakerConfig, conn_msg::{ConnCallbackMsg, ConfigResponse, ConfigRequest}, NotifyCallbackAddr};
 
 #[derive(Default,Clone)]
 pub struct ConnManage {
@@ -129,15 +129,15 @@ impl Handler<ConnCallbackMsg> for ConnManage {
     }
 }
 
-impl Handler<ConnCmd> for ConnManage {
-    type Result=ResponseActFuture<Self,anyhow::Result<ConnMsgResult>>;
+impl Handler<ConfigRequest> for ConnManage {
+    type Result=ResponseActFuture<Self,anyhow::Result<ConfigResponse>>;
 
-    fn handle(&mut self, msg: ConnCmd, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ConfigRequest, ctx: &mut Self::Context) -> Self::Result {
         let conn = self.conns.get(self.current_index).unwrap();
         let conn_addr =conn.grpc_client_addr.clone();
         let fut=async move {
             if let Some(conn_addr) = conn_addr {
-                let res:ConnMsgResult= conn_addr.send(msg).await??;
+                let res:ConfigResponse= conn_addr.send(msg).await??;
                 Ok(res)
             }
             else{

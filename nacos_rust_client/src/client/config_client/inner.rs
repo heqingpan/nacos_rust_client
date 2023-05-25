@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use actix::{prelude::*, WeakAddr};
 
-use crate::{client::get_md5, conn_manage::{manage::{ConnManage, ConnManageCmd}, conn_msg::{ConnCmd, ConfigRequest}}};
+use crate::{client::get_md5, conn_manage::{manage::{ConnManage, ConnManageCmd}, conn_msg::{ConfigRequest}}};
 
 use super::{config_key::ConfigKey, listener::{ConfigListener, ListenerValue}, inner_client::ConfigInnerRequestClient, model::NotifyConfigItem};
 
@@ -53,6 +53,9 @@ impl ConfigInnerActor{
     }
 
     fn listener(&mut self,ctx:&mut actix::Context<Self>) {
+        if self.use_grpc {
+            return;
+        }
         if let Some(content) = self.get_listener_body(){
             let request_client = self.request_client.clone();
             //let endpoints = self.request_client.endpoints.clone();
@@ -132,7 +135,7 @@ impl Handler<ConfigInnerCmd> for ConfigInnerActor {
                         if self.use_grpc {
                             if let Some(addr) = &self.conn_manage {
                                 if let Some(addr) = addr.upgrade() {
-                                    addr.do_send(ConnCmd::ConfigCmd(ConfigRequest::Listen(vec![(key.clone(),md5.clone())],true)));
+                                    addr.do_send(ConfigRequest::Listen(vec![(key.clone(),md5.clone())],true));
                                 }
                             }
                         }
@@ -156,7 +159,7 @@ impl Handler<ConfigInnerCmd> for ConfigInnerActor {
                                 if self.use_grpc {
                                     if let Some(addr) = &self.conn_manage {
                                         if let Some(addr) = addr.upgrade() {
-                                            addr.do_send(ConnCmd::ConfigCmd(ConfigRequest::Listen(vec![(key.clone(),"".to_owned())],false)));
+                                            addr.do_send(ConfigRequest::Listen(vec![(key.clone(),"".to_owned())],false));
                                         }
                                     }
                                 }

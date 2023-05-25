@@ -1,19 +1,30 @@
-use std::{time::Duration, collections::HashMap};
+use std::{collections::HashMap, time::Duration};
 
 use actix::{prelude::*, WeakAddr};
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 
-use crate::{grpc::{channel::CloseableChannel, api_model::ConnectionSetupRequest, utils::PayloadUtils}, conn_manage::{conn_msg::{ConnCmd, ConnMsgResult, ConfigRequest,NamingRequest, ConfigResponse, ConnCallbackMsg,}, manage::ConnManage}, client::config_client::{model::NotifyConfigItem, ConfigKey},};
+use crate::{
+    client::config_client::{ConfigKey},
+    conn_manage::{
+        conn_msg::{ConfigRequest, ConfigResponse, ConnCallbackMsg, NamingRequest},
+        manage::ConnManage,
+    },
+    grpc::{api_model::ConnectionSetupRequest, channel::CloseableChannel, utils::PayloadUtils},
+};
 
-use super::{nacos_proto::{
-    bi_request_stream_client::BiRequestStreamClient, request_client::RequestClient, Payload,
-}, inner_request_utils::InnerRequestUtils, api_model::ConfigChangeNotifyRequest};
+use super::{
+    api_model::ConfigChangeNotifyRequest,
+    inner_request_utils::InnerRequestUtils,
+    nacos_proto::{
+        bi_request_stream_client::BiRequestStreamClient, request_client::RequestClient, Payload,
+    },
+};
 
 //type SenderType = tokio::sync::mpsc::Sender<Result<Payload, tonic::Status>>;
 type ReceiverStreamType = tonic::Streaming<Payload>;
 type BiStreamSenderType = tokio::sync::mpsc::Sender<Option<Payload>>;
-type PayloadSenderType = tokio::sync::oneshot::Sender<Result<Payload,String>>;
+type PayloadSenderType = tokio::sync::oneshot::Sender<Result<Payload, String>>;
 
 #[derive(Clone)]
 pub struct InnerGrpcClient {
@@ -22,16 +33,19 @@ pub struct InnerGrpcClient {
     //request_client: RequestClient<Channel>,
     stream_sender: Option<BiStreamSenderType>,
     stream_reader: bool,
-    manage_addr:WeakAddr<ConnManage>,
+    manage_addr: WeakAddr<ConnManage>,
 }
 
 impl InnerGrpcClient {
-    pub fn new(addr: String,manage_addr:WeakAddr<ConnManage>) -> anyhow::Result<Self> {
+    pub fn new(addr: String, manage_addr: WeakAddr<ConnManage>) -> anyhow::Result<Self> {
         let channel = Channel::from_shared(addr)?.connect_lazy();
-        Self::new_by_channel(channel,manage_addr)
+        Self::new_by_channel(channel, manage_addr)
     }
 
-    pub fn new_by_channel(channel:Channel,manage_addr:WeakAddr<ConnManage>) -> anyhow::Result<Self> {
+    pub fn new_by_channel(
+        channel: Channel,
+        manage_addr: WeakAddr<ConnManage>,
+    ) -> anyhow::Result<Self> {
         //let bi_request_stream_client = BiRequestStreamClient::new(channel.clone());
         //let request_client = RequestClient::new(channel.clone());
         Ok(Self {
@@ -52,7 +66,7 @@ impl InnerGrpcClient {
         let channel = self.channel.clone();
         self.stream_sender = Some(tx);
         async move {
-            /* 
+            /*
             let val="{}";
             let payload=PayloadUtils::build_payload("ServerCheckRequest", val.to_string());
             let  mut request_client = RequestClient::new(channel.clone());
@@ -70,9 +84,9 @@ impl InnerGrpcClient {
             match response {
                 Ok(response) => {
                     let stream = response.into_inner();
-                    actor.stream_reader=true;
+                    actor.stream_reader = true;
                     //actor.bi_stream_setup(ctx);
-                    actor.receive_bi_stream(ctx,stream);
+                    actor.receive_bi_stream(ctx, stream);
                 }
                 Err(err) => {
                     log::error!("conn_bi_stream error,{:?}", &err);
@@ -84,34 +98,53 @@ impl InnerGrpcClient {
         Ok(())
     }
 
-    fn bi_stream_setup(
-        &mut self,
-        ctx: &mut Context<Self>,
-    ) {
+    fn bi_stream_setup(&mut self, ctx: &mut Context<Self>) {
         let tx = self.stream_sender.clone().unwrap();
         async move {
-            let mut setup_request= ConnectionSetupRequest::default();
-            setup_request.labels.insert("AppName".to_owned(), "rust_nacos_client".to_owned());
-            setup_request.client_version=Some("0.3.".to_owned());
-            match tx.send(Some(PayloadUtils::build_full_payload("ConnectionSetupRequest", serde_json::to_string(&setup_request).unwrap()
-                    ,"127.0.0.1",HashMap::new()))).await{
-                Ok(_) => {},
+            let mut setup_request = ConnectionSetupRequest::default();
+            setup_request
+                .labels
+                .insert("AppName".to_owned(), "rust_nacos_client".to_owned());
+            setup_request.client_version = Some("0.3.".to_owned());
+            match tx
+                .send(Some(PayloadUtils::build_full_payload(
+                    "ConnectionSetupRequest",
+                    serde_json::to_string(&setup_request).unwrap(),
+                    "127.0.0.1",
+                    HashMap::new(),
+                )))
+                .await
+            {
+                Ok(_) => {}
                 Err(err) => {
-                    log::error!("ConnectionSetupRequest error,{}",&PayloadUtils::get_payload_string(&err.0.unwrap()));
-                },
+                    log::error!(
+                        "ConnectionSetupRequest error,{}",
+                        &PayloadUtils::get_payload_string(&err.0.unwrap())
+                    );
+                }
             }
             //manage.do_send(BiStreamManageCmd::ConnClose(client_id));
         }
         .into_actor(self)
-        .map(|_, _, _ctx| {
-        })
+        .map(|_, _, _ctx| {})
         .spawn(ctx);
     }
 
-    async fn do_config_change_notify(channel:Channel,manage_addr:&WeakAddr<ConnManage>,config_key:ConfigKey) -> anyhow::Result<()> {
-        log::info!("config change notify:{}#{}#{}",&config_key.data_id,&config_key.group,&config_key.tenant);
-        if let ConnMsgResult::ConfigResult(ConfigResponse::ConfigValue(content,md5))= InnerRequestUtils::config_query(channel,config_key.clone()).await? {
-            let msg = ConnCallbackMsg::ConfigChange(config_key,content,md5);
+    async fn do_config_change_notify(
+        channel: Channel,
+        manage_addr: &WeakAddr<ConnManage>,
+        config_key: ConfigKey,
+    ) -> anyhow::Result<()> {
+        log::info!(
+            "config change notify:{}#{}#{}",
+            &config_key.data_id,
+            &config_key.group,
+            &config_key.tenant
+        );
+        if let ConfigResponse::ConfigValue(content, md5) =
+            InnerRequestUtils::config_query(channel, config_key.clone()).await?
+        {
+            let msg = ConnCallbackMsg::ConfigChange(config_key, content, md5);
             if let Some(addr) = manage_addr.upgrade() {
                 addr.do_send(msg);
             }
@@ -130,17 +163,25 @@ impl InnerGrpcClient {
         async move {
             while let Some(item) = receiver_stream.next().await {
                 if let Ok(payload) = item {
-                    if let Some(t)=PayloadUtils::get_metadata_type(&payload.metadata) {
+                    if let Some(t) = PayloadUtils::get_metadata_type(&payload.metadata) {
                         let body_vec = payload.body.unwrap_or_default().value;
-                        if t=="ConfigChangeNotifyRequest" {
+                        if t == "ConfigChangeNotifyRequest" {
                             //println!("ConfigChangeNotifyRequest");
-                            if let Ok(request)= serde_json::from_slice::<ConfigChangeNotifyRequest>(&body_vec){
-                                let config_key = ConfigKey{
-                                    data_id:request.data_id,
-                                    group:request.group,
-                                    tenant:request.tenant,
+                            if let Ok(request) =
+                                serde_json::from_slice::<ConfigChangeNotifyRequest>(&body_vec)
+                            {
+                                let config_key = ConfigKey {
+                                    data_id: request.data_id,
+                                    group: request.group,
+                                    tenant: request.tenant,
                                 };
-                                Self::do_config_change_notify(channel.clone(), &manage_addr, config_key).await.ok();
+                                Self::do_config_change_notify(
+                                    channel.clone(),
+                                    &manage_addr,
+                                    config_key,
+                                )
+                                .await
+                                .ok();
                             }
                         }
                     }
@@ -157,42 +198,47 @@ impl InnerGrpcClient {
         .spawn(ctx);
     }
 
-    fn do_request(&mut self,ctx: &mut Context<Self>,payload:Payload,sender:Option<PayloadSenderType>) {
+    fn do_request(
+        &mut self,
+        ctx: &mut Context<Self>,
+        payload: Payload,
+        sender: Option<PayloadSenderType>,
+    ) {
         let channel = self.channel.clone();
         async move {
-            let  mut request_client = RequestClient::new(channel);
-            let response =request_client.request(tonic::Request::new(payload)).await;
-            match response{
+            let mut request_client = RequestClient::new(channel);
+            let response = request_client.request(tonic::Request::new(payload)).await;
+            match response {
                 Ok(response) => {
-                    let res= response.into_inner();
-                    log::info!("check response:{}",&PayloadUtils::get_payload_header(&res));
+                    let res = response.into_inner();
+                    log::info!("check response:{}", &PayloadUtils::get_payload_header(&res));
                     if let Some(sender) = sender {
                         sender.send(Ok(res)).ok();
                     }
-                },
+                }
                 Err(err) => {
                     if let Some(sender) = sender {
                         sender.send(Err("request error".to_owned())).ok();
                     }
-                    log::error!("do_request error, {:?}",&err);
-                },
+                    log::error!("do_request error, {:?}", &err);
+                }
             };
-        }.into_actor(self)
-        .map(|_,_,_|{
-        })
+        }
+        .into_actor(self)
+        .map(|_, _, _| {})
         .spawn(ctx);
     }
 
     fn check_heartbeat(&mut self, ctx: &mut Context<Self>) {
         if self.stream_reader {
-            let val="{}";
-            let payload=PayloadUtils::build_payload("ServerCheckRequest", val.to_string());
+            let val = "{}";
+            let payload = PayloadUtils::build_payload("ServerCheckRequest", val.to_string());
             self.do_request(ctx, payload, None);
         }
     }
 
-    pub fn heartbeat(&self,ctx:&mut actix::Context<Self>) {
-        ctx.run_later(Duration::from_millis(5000), |act,ctx|{
+    pub fn heartbeat(&self, ctx: &mut actix::Context<Self>) {
+        ctx.run_later(Duration::from_millis(5000), |act, ctx| {
             act.check_heartbeat(ctx);
             act.heartbeat(ctx);
         });
@@ -214,7 +260,7 @@ impl Actor for InnerGrpcClient {
 #[rtype(result = "anyhow::Result<InnerGrpcClientResult>")]
 pub enum InnerGrpcClientCmd {
     ReceiverStreamItem(Payload),
-    Request(Payload,Option<PayloadSenderType>),
+    Request(Payload, Option<PayloadSenderType>),
     Ping,
 }
 
@@ -227,69 +273,61 @@ impl Handler<InnerGrpcClientCmd> for InnerGrpcClient {
 
     fn handle(&mut self, msg: InnerGrpcClientCmd, ctx: &mut Self::Context) -> Self::Result {
         match msg {
-            InnerGrpcClientCmd::ReceiverStreamItem(payload) => {
-                Ok(InnerGrpcClientResult::None)
-            },
-            InnerGrpcClientCmd::Ping => {
-                Ok(InnerGrpcClientResult::None)
-            },
-            InnerGrpcClientCmd::Request(payload,sender) => {
+            InnerGrpcClientCmd::ReceiverStreamItem(payload) => Ok(InnerGrpcClientResult::None),
+            InnerGrpcClientCmd::Ping => Ok(InnerGrpcClientResult::None),
+            InnerGrpcClientCmd::Request(payload, sender) => {
                 self.do_request(ctx, payload, sender);
                 Ok(InnerGrpcClientResult::None)
-            },
+            }
         }
     }
 }
 
-impl Handler<ConnCmd> for InnerGrpcClient {
-    type Result=ResponseActFuture<Self,anyhow::Result<ConnMsgResult>>;
+impl Handler<ConfigRequest> for InnerGrpcClient {
+    type Result = ResponseActFuture<Self, anyhow::Result<ConfigResponse>>;
 
-    fn handle(&mut self, msg: ConnCmd, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, config_request: ConfigRequest, ctx: &mut Self::Context) -> Self::Result {
         let channel = self.channel.clone();
-        let manage_addr  = self.manage_addr.clone();
-        let fut=async move {
-            match msg {
-                ConnCmd::ConfigCmd(config_request) => {
-                    match config_request {
-                        ConfigRequest::GetConfig(config_key) => {
-                            return InnerRequestUtils::config_query(channel,config_key).await;
-                        },
-                        ConfigRequest::SetConfig(config_key, content) => {
-                            return InnerRequestUtils::config_publish(channel,config_key,content).await;
-                        },
-                        ConfigRequest::DeleteConfig(config_key) => {
-                            return InnerRequestUtils::config_remove(channel,config_key).await;
-                        },
-                        ConfigRequest::V1Listen(_) => {
-                            return Err(anyhow::anyhow!("not support"));
-                        },
-                        ConfigRequest::Listen(listen_items,listen) => {
-                            //println!("grpc Listen");
-                            let res=InnerRequestUtils::config_change_batch_listen(channel.clone(),listen_items,listen).await?;
-                            if let ConnMsgResult::ConfigResult(ConfigResponse::ChangeKeys(keys)) = res {
-                                for config_key in keys {
-                                    Self::do_config_change_notify(channel.clone(), &manage_addr, config_key).await.ok();
-                                }
-                            }
-                            return Ok(ConnMsgResult::None)
-                        },
+        let manage_addr = self.manage_addr.clone();
+        let fut = async move {
+            match config_request {
+                ConfigRequest::GetConfig(config_key) => {
+                    return InnerRequestUtils::config_query(channel, config_key).await;
+                }
+                ConfigRequest::SetConfig(config_key, content) => {
+                    return InnerRequestUtils::config_publish(channel, config_key, content).await;
+                }
+                ConfigRequest::DeleteConfig(config_key) => {
+                    return InnerRequestUtils::config_remove(channel, config_key).await;
+                }
+                ConfigRequest::V1Listen(_) => {
+                    return Err(anyhow::anyhow!("not support"));
+                }
+                ConfigRequest::Listen(listen_items, listen) => {
+                    //println!("grpc Listen");
+                    let res = InnerRequestUtils::config_change_batch_listen(
+                        channel.clone(),
+                        listen_items,
+                        listen,
+                    )
+                    .await?;
+                    if let ConfigResponse::ChangeKeys(keys) = res {
+                        for config_key in keys {
+                            Self::do_config_change_notify(
+                                channel.clone(),
+                                &manage_addr,
+                                config_key,
+                            )
+                            .await
+                            .ok();
+                        }
                     }
-                },
-                ConnCmd::NamingCmd(naming_request) => {
-                    match naming_request {
-                        NamingRequest::Register(_) => todo!(),
-                        NamingRequest::Unregister(_) => todo!(),
-                        NamingRequest::Subscribe(_) => todo!(),
-                        NamingRequest::Unsubscribe(_) => todo!(),
-                        NamingRequest::QueryInstance(_) => todo!(),
-                        NamingRequest::V1Heartbeat(_) => todo!(),
-                    }
-                },
-            };
-            Ok(ConnMsgResult::None)
-        }.into_actor(self)
-        .map(|r,_,_|{r});
+                    return Ok(ConfigResponse::None);
+                }
+            }
+        }
+        .into_actor(self)
+        .map(|r, _, _| r);
         Box::pin(fut)
     }
 }
-
