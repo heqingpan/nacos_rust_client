@@ -6,7 +6,7 @@ use actix::{prelude::*, WeakAddr};
 
 use crate::{client::{AuthInfo, HostInfo, naming_client::NamingUtils, config_client::{inner::ConfigInnerCmd, model::NotifyConfigItem, ConfigInnerActor}, nacos_client::{ActixSystemCmd, ActixSystemResult}}, init_global_system_actor, ActorCreate};
 
-use super::{inner_conn::InnerConn, breaker::BreakerConfig, conn_msg::{ConnCallbackMsg, ConfigResponse, ConfigRequest}, NotifyCallbackAddr};
+use super::{inner_conn::InnerConn, breaker::BreakerConfig, conn_msg::{ConnCallbackMsg, ConfigResponse, ConfigRequest, NamingRequest, NamingResponse}, NotifyCallbackAddr};
 
 #[derive(Default,Clone)]
 pub struct ConnManage {
@@ -149,3 +149,24 @@ impl Handler<ConfigRequest> for ConnManage {
 
     }
 }
+
+impl Handler<NamingRequest> for ConnManage {
+    type Result = ResponseActFuture<Self, anyhow::Result<NamingResponse>>;
+
+    fn handle(&mut self, request: NamingRequest, ctx: &mut Self::Context) -> Self::Result {
+        let conn = self.conns.get(self.current_index).unwrap();
+        let conn_addr =conn.grpc_client_addr.clone();
+        let fut=async move {
+            if let Some(conn_addr) = conn_addr {
+                let res:NamingResponse= conn_addr.send(request).await??;
+                Ok(res)
+            }
+            else{
+                Err(anyhow::anyhow!("grpc conn is empty"))
+            }
+        }.into_actor(self)
+        .map(|r,_act,_ctx|{r});
+        Box::pin(fut)
+    }
+}
+     

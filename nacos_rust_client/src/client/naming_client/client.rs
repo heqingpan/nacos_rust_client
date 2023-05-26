@@ -1,6 +1,7 @@
 use crate::client::nacos_client::ActixSystemActorSetCmd;
 use crate::client::nacos_client::ActixSystemCmd;
 use crate::client::nacos_client::ActixSystemResult;
+use crate::conn_manage::manage::ConnManage;
 use crate::init_global_system_actor;
 use crate::client::auth::AuthActor;
 use crate::client::AuthInfo;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 use std::env;
 
 use crate::client::{HostInfo, utils};
+use actix::WeakAddr;
 use actix::prelude::*;
 use super::Instance;
 use super::InstanceListener;
@@ -25,7 +27,8 @@ pub struct NamingClient{
     pub namespace_id:String,
     pub(crate) register:Addr<InnerNamingRegister>,
     pub(crate) listener_addr:Addr<InnerNamingListener>,
-    pub current_ip:String
+    conn_manage_addr: Addr<ConnManage>,
+    pub current_ip:String,
 }
 
 impl Drop for NamingClient {
@@ -47,13 +50,16 @@ impl NamingClient {
         let endpoint = Arc::new(ServerEndpointInfo{
             hosts:vec![host]
         });
+        let conn_manage=ConnManage::new(endpoint.hosts.clone(),true,None,Default::default());
+        let conn_manage_addr = conn_manage.start_at_global_system();
         let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint);
-        let addrs=Self::init_register(namespace_id.clone(),current_ip.clone(),request_client,None);
+        let addrs=Self::init_register(namespace_id.clone(),current_ip.clone(),request_client,None,Some(conn_manage_addr.clone().downgrade()));
         let r=Arc::new(Self{
             namespace_id,
             register:addrs.0,
             listener_addr:addrs.1,
             current_ip,
+            conn_manage_addr,
         });
         let system_addr = init_global_system_actor();
         system_addr.do_send(ActixSystemActorSetCmd::LastNamingClient(r.clone()));
@@ -62,6 +68,8 @@ impl NamingClient {
 
     pub fn new_with_addrs(addrs:&str,namespace_id:String,auth_info:Option<AuthInfo>) -> Arc<Self> {
         let endpoint = Arc::new(ServerEndpointInfo::new(addrs));
+        let conn_manage=ConnManage::new(endpoint.hosts.clone(),true,auth_info.clone(),Default::default());
+        let conn_manage_addr = conn_manage.start_at_global_system();
         let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint);
         let current_ip = match env::var("IP"){
             Ok(v) => v,
@@ -69,19 +77,20 @@ impl NamingClient {
                 local_ipaddress::get().unwrap()
             },
         };
-        let addrs=Self::init_register(namespace_id.clone(),current_ip.clone(),request_client,auth_info);
+        let addrs=Self::init_register(namespace_id.clone(),current_ip.clone(),request_client,auth_info,Some(conn_manage_addr.clone().downgrade()));
         let r = Arc::new(Self{
             namespace_id,
             register:addrs.0,
             listener_addr:addrs.1,
             current_ip,
+            conn_manage_addr,
         });
         let system_addr = init_global_system_actor();
         system_addr.do_send(ActixSystemActorSetCmd::LastNamingClient(r.clone()));
         r
     }
 
-    fn init_register(namespace_id:String,client_ip:String,mut request_client:InnerNamingRequestClient,auth_info:Option<AuthInfo>) 
+    fn init_register(namespace_id:String,client_ip:String,mut request_client:InnerNamingRequestClient,auth_info:Option<AuthInfo>,conn_manage_addr:Option<WeakAddr<ConnManage>>) 
         -> (Addr<InnerNamingRegister>,Addr<InnerNamingListener>) {
         let system_addr =  init_global_system_actor();
         let endpoint=request_client.endpoints.clone();
@@ -95,7 +104,7 @@ impl NamingClient {
         };
         request_client.set_auth_addr(auth_addr);
 
-        let actor = InnerNamingRegister::new(request_client.clone());
+        let actor = InnerNamingRegister::new(request_client.clone(),conn_manage_addr.clone());
         let (tx,rx) = std::sync::mpsc::sync_channel(1);
         let msg = ActixSystemCmd::InnerNamingRegister(actor,tx);
         system_addr.do_send(msg);
@@ -113,7 +122,7 @@ impl NamingClient {
             _ => panic!("init actor error"),
         };
 
-        let actor = InnerNamingListener::new(&namespace_id,&client_ip,0, request_client,udp_work_addr);
+        let actor = InnerNamingListener::new(&namespace_id,&client_ip,0, request_client,udp_work_addr,conn_manage_addr);
         let (tx,rx) = std::sync::mpsc::sync_channel(1);
         let msg = ActixSystemCmd::InnerNamingListener(actor,tx);
         system_addr.do_send(msg);

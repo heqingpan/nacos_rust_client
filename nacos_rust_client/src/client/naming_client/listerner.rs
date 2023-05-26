@@ -7,6 +7,8 @@ use crate::client::now_millis;
 use crate::client::naming_client::QueryListResult;
 use crate::client::naming_client::UdpWorker;
 use crate::client::naming_client::InnerNamingRequestClient;
+use crate::conn_manage::manage::ConnManage;
+use actix::WeakAddr;
 use inner_mem_cache::TimeoutSet;
 use std::collections::HashMap;
 use crate::client::naming_client::ServiceInstanceKey;
@@ -101,24 +103,29 @@ pub struct InnerNamingListener {
     instances:HashMap<String,InstancesWrap>,
     timeout_set:TimeoutSet<String>,
     request_client:InnerNamingRequestClient,
+    conn_manage:Option<WeakAddr<ConnManage>>,
     period: u64,
     client_ip:String,
     udp_port:u16,
     udp_addr:Addr<UdpWorker>,
+    use_grpc: bool,
 }
 
 impl InnerNamingListener {
-    pub fn new(namespace_id:&str,client_ip:&str,udp_port:u16,request_client:InnerNamingRequestClient,udp_addr:Addr<UdpWorker>) -> Self{
+    pub fn new(namespace_id:&str,client_ip:&str,udp_port:u16,request_client:InnerNamingRequestClient,udp_addr:Addr<UdpWorker>,conn_manage:Option<WeakAddr<ConnManage>>) -> Self{
+        let use_grpc = conn_manage.is_some();
         Self{
             namespace_id:namespace_id.to_owned(),
             listeners: Default::default(),
             instances: Default::default(),
             timeout_set: Default::default(),
             request_client,
+            conn_manage,
             period:3000,
             client_ip:client_ip.to_owned(),
             udp_port:udp_port,
             udp_addr,
+            use_grpc,
         }
     }
 

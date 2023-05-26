@@ -1,6 +1,9 @@
 
 
 use crate::client::naming_client::REGISTER_PERIOD;
+use crate::conn_manage::conn_msg::NamingRequest;
+use crate::conn_manage::manage::ConnManage;
+use actix::WeakAddr;
 use actix::prelude::*;
 use crate::client::now_millis;
 use std::time::Duration;
@@ -15,23 +18,31 @@ pub struct InnerNamingRegister{
     instances:HashMap<String,Instance>,
     timeout_set:TimeoutSet<String>,
     request_client:InnerNamingRequestClient,
+    conn_manage:Option<WeakAddr<ConnManage>>,
     period: u64,
-    stop_remove_all:bool
+    stop_remove_all:bool,
+    use_grpc:bool,
 }
 
 impl InnerNamingRegister {
 
-    pub fn new(request_client:InnerNamingRequestClient) -> Self{
+    pub fn new(request_client:InnerNamingRequestClient,conn_manage:Option<WeakAddr<ConnManage>>) -> Self{
+        let use_grpc = conn_manage.is_some();
         Self{
             instances:Default::default(),
             timeout_set:Default::default(),
             request_client,
             period: REGISTER_PERIOD,
             stop_remove_all:false,
+            conn_manage,
+            use_grpc,
         }
     }
 
     pub fn hb(&self,ctx:&mut actix::Context<Self>) {
+        if self.use_grpc {
+            return;
+        }
         ctx.run_later(Duration::new(1,0), |act,ctx|{
             let current_time = now_millis();
             let addr = ctx.address();
@@ -43,9 +54,20 @@ impl InnerNamingRegister {
     }
 
     fn remove_instance(&self,instance:Instance,ctx:&mut actix::Context<Self>){
+        let use_grpc=self.use_grpc.to_owned();
+        if use_grpc {
+            if let Some(conn_manage) = &self.conn_manage {
+                if let Some(addr) = conn_manage.upgrade() {
+                    addr.do_send(NamingRequest::Register(vec![instance.clone()]));
+                }
+            }
+            return;
+        }
         let client = self.request_client.clone();
         async move {
-            client.remove(&instance).await.unwrap_or_default();
+            if !use_grpc {
+                client.remove(&instance).await.unwrap_or_default();
+            }
             instance
         }.into_actor(self)
         .map(|_,_,_|{}).spawn(ctx);
@@ -116,8 +138,18 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                 let time = now_millis();
                 self.timeout_set.add(time+self.period,key.clone());
                 let client = self.request_client.clone();
+                let use_grpc=self.use_grpc.to_owned();
+                if use_grpc {
+                    if let Some(conn_manage) = &self.conn_manage {
+                        if let Some(addr) = conn_manage.upgrade() {
+                            addr.do_send(NamingRequest::Register(vec![instance.clone()]));
+                        }
+                    }
+                }
                 async move {
-                    client.register(&instance).await.unwrap_or_default();
+                    if !use_grpc {
+                        client.register(&instance).await.unwrap_or_default();
+                    }
                     instance
                 }.into_actor(self)
                 .map(|instance,act,_|{
@@ -134,6 +166,9 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                 }
             },
             NamingRegisterCmd::Heartbeat(key,time) => {
+                if self.use_grpc {
+                    return Ok(());
+                }
                 if let Some(instance)=self.instances.get(&key) {
                     // request heartbeat
                     let client = self.request_client.clone();
