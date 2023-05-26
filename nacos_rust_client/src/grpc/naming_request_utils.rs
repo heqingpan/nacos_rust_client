@@ -1,8 +1,8 @@
 use tonic::transport::Channel;
 
-use crate::{client::naming_client::Instance, conn_manage::conn_msg::NamingResponse};
+use crate::{client::naming_client::{Instance, ServiceInstanceKey}, conn_manage::conn_msg::NamingResponse};
 
-use super::{api_model::{Instance as ApiInstance, BatchInstanceRequest, BaseResponse}, utils::PayloadUtils, nacos_proto::request_client::RequestClient};
+use super::{api_model::{Instance as ApiInstance, BatchInstanceRequest, BaseResponse, SubscribeServiceRequest}, utils::PayloadUtils, nacos_proto::request_client::RequestClient};
 
 
 const REGISTER_INSTANCE: &str = "registerInstance";
@@ -28,7 +28,7 @@ impl GrpcNamingRequestUtils {
         }
     }
 
-    pub async fn register(channel:Channel,instances:Vec<Instance>) -> anyhow::Result<NamingResponse> {
+    pub async fn batch_register(channel:Channel,instances:Vec<Instance>,is_reqister:bool) -> anyhow::Result<NamingResponse> {
         if instances.len()==0 {
             return Err(anyhow::anyhow!("register instances is empty"));
         }
@@ -37,7 +37,7 @@ impl GrpcNamingRequestUtils {
             namespace:Some(first_instance.namespace_id.to_owned()),
             service_name:Some(first_instance.service_name.to_owned()),
             group_name:Some(first_instance.group_name.to_owned()),
-            r#type:Some(REGISTER_INSTANCE.to_owned()),
+            r#type:Some(if is_reqister { REGISTER_INSTANCE.to_owned() } else {DE_REGISTER_INSTANCE.to_owned()}),
             ..Default::default()
         };
         let api_instances:Vec<ApiInstance> = instances.into_iter().map(|e|Self::convert_to_api_instance(e)).collect::<Vec<_>>();
@@ -54,4 +54,25 @@ impl GrpcNamingRequestUtils {
         }
         Ok(NamingResponse::None)
     }
+
+    pub async fn subscribe(channel:Channel,service_key:ServiceInstanceKey,is_subscribe:bool) -> anyhow::Result<NamingResponse> {
+        let request = SubscribeServiceRequest {
+            namespace:service_key.namespace_id,
+            group_name:Some(service_key.group_name),
+            service_name:Some(service_key.service_name),
+            subscribe:is_subscribe,
+            ..Default::default()
+        };
+        let val = serde_json::to_string(&request).unwrap();
+        let payload = PayloadUtils::build_payload("BatchInstanceRequest", val);
+        let  mut request_client = RequestClient::new(channel);
+        let response =request_client.request(tonic::Request::new(payload)).await?;
+        let body_vec = response.into_inner().body.unwrap_or_default().value;
+        let res:BaseResponse= serde_json::from_slice(&body_vec)?;
+        if res.error_code!=200u16 {
+            return Err(anyhow::anyhow!("response error code"))
+        }
+        Ok(NamingResponse::None)
+    }
+
 }

@@ -15,7 +15,7 @@ use crate::{
 
 use super::{
     api_model::ConfigChangeNotifyRequest,
-    inner_request_utils::GrpcConfigRequestUtils,
+    config_request_utils::GrpcConfigRequestUtils,
     nacos_proto::{
         bi_request_stream_client::BiRequestStreamClient, request_client::RequestClient, Payload,
     },

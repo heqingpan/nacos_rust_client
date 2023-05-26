@@ -133,7 +133,7 @@ impl Instance {
 
 #[derive(Debug,Clone,Default)]
 pub struct ServiceInstanceKey {
-    //pub namespace_id:String,
+    pub namespace_id:Option<String>,
     pub group_name:String,
     pub service_name:String,
 }
@@ -143,8 +143,14 @@ impl ServiceInstanceKey{
         Self{
             group_name:group_name.to_owned(),
             service_name:service_name.to_owned(),
+            ..Default::default()
         }
     }
+
+    pub fn new_with_namespace(&mut self,namespace_id:&str){
+        self.namespace_id = Some(namespace_id.to_owned());
+    }
+
     pub fn get_key(&self) -> String {
         NamingUtils::get_group_and_service_name(&self.service_name, &self.group_name)
     }
