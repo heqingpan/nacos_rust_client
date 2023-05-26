@@ -6,9 +6,9 @@ use super::{api_model::{ConfigQueryRequest, ConfigQueryResponse, ConfigPublishRe
 
 
 
-pub(crate) struct InnerRequestUtils;
+pub(crate) struct GrpcConfigRequestUtils;
 
-impl InnerRequestUtils {
+impl GrpcConfigRequestUtils {
 
     pub async fn config_query(channel:Channel,config_key:ConfigKey) -> anyhow::Result<ConfigResponse> {
         let request = ConfigQueryRequest {
@@ -88,3 +88,4 @@ impl InnerRequestUtils {
     }
 
 }
+

@@ -191,16 +191,16 @@ pub struct ConfigChangeNotifyRequest {
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Instance{
-    pub instance_id:Option<Arc<String>>,
-    pub ip:Option<Arc<String>>,
+    pub instance_id:Option<String>,
+    pub ip:Option<String>,
     pub port:u32,
     pub weight:f32,
     pub healthy:bool,
     pub enabled:bool,
     pub ephemeral: bool,
     pub cluster_name:Option<String>,
-    pub service_name:Option<Arc<String>>,
-    pub metadata:Arc<HashMap<String,String>>,
+    pub service_name:Option<String>,
+    pub metadata:HashMap<String,String>,
     pub instance_heart_beat_interval:Option<i64>,
     pub instance_heart_beat_time_out:Option<i64>,
     pub ip_delete_timeout:Option<i64>,

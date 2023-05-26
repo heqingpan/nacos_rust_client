@@ -4,3 +4,4 @@ pub mod grpc_client;
 pub mod channel;
 pub mod utils;
 pub mod inner_request_utils;
+pub mod naming_request_utils;

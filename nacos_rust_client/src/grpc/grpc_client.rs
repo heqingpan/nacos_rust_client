@@ -7,7 +7,7 @@ use tonic::transport::Channel;
 use crate::{
     client::config_client::{ConfigKey},
     conn_manage::{
-        conn_msg::{ConfigRequest, ConfigResponse, ConnCallbackMsg, NamingRequest},
+        conn_msg::{ConfigRequest, ConfigResponse, ConnCallbackMsg, NamingRequest, NamingResponse},
         manage::ConnManage,
     },
     grpc::{api_model::ConnectionSetupRequest, channel::CloseableChannel, utils::PayloadUtils},
@@ -15,7 +15,7 @@ use crate::{
 
 use super::{
     api_model::ConfigChangeNotifyRequest,
-    inner_request_utils::InnerRequestUtils,
+    inner_request_utils::GrpcConfigRequestUtils,
     nacos_proto::{
         bi_request_stream_client::BiRequestStreamClient, request_client::RequestClient, Payload,
     },
@@ -142,7 +142,7 @@ impl InnerGrpcClient {
             &config_key.tenant
         );
         if let ConfigResponse::ConfigValue(content, md5) =
-            InnerRequestUtils::config_query(channel, config_key.clone()).await?
+            GrpcConfigRequestUtils::config_query(channel, config_key.clone()).await?
         {
             let msg = ConnCallbackMsg::ConfigChange(config_key, content, md5);
             if let Some(addr) = manage_addr.upgrade() {
@@ -292,20 +292,20 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
         let fut = async move {
             match config_request {
                 ConfigRequest::GetConfig(config_key) => {
-                    return InnerRequestUtils::config_query(channel, config_key).await;
+                    return GrpcConfigRequestUtils::config_query(channel, config_key).await;
                 }
                 ConfigRequest::SetConfig(config_key, content) => {
-                    return InnerRequestUtils::config_publish(channel, config_key, content).await;
+                    return GrpcConfigRequestUtils::config_publish(channel, config_key, content).await;
                 }
                 ConfigRequest::DeleteConfig(config_key) => {
-                    return InnerRequestUtils::config_remove(channel, config_key).await;
+                    return GrpcConfigRequestUtils::config_remove(channel, config_key).await;
                 }
                 ConfigRequest::V1Listen(_) => {
                     return Err(anyhow::anyhow!("not support"));
                 }
                 ConfigRequest::Listen(listen_items, listen) => {
                     //println!("grpc Listen");
-                    let res = InnerRequestUtils::config_change_batch_listen(
+                    let res = GrpcConfigRequestUtils::config_change_batch_listen(
                         channel.clone(),
                         listen_items,
                         listen,
@@ -328,6 +328,29 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
         }
         .into_actor(self)
         .map(|r, _, _| r);
+        Box::pin(fut)
+    }
+}
+
+
+impl Handler<NamingRequest> for InnerGrpcClient {
+    type Result = ResponseActFuture<Self, anyhow::Result<NamingResponse>>;
+
+    fn handle(&mut self, request: NamingRequest, ctx: &mut Self::Context) -> Self::Result {
+        let channel = self.channel.clone();
+        let manage_addr = self.manage_addr.clone();
+        let fut=async move {
+            match request {
+                NamingRequest::Register(_) => todo!(),
+                NamingRequest::Unregister(_) => todo!(),
+                NamingRequest::Subscribe(_) => todo!(),
+                NamingRequest::Unsubscribe(_) => todo!(),
+                NamingRequest::QueryInstance(_) => todo!(),
+                NamingRequest::V1Heartbeat(_) => todo!(),
+            }
+            Ok(NamingResponse::None)
+        }.into_actor(self)
+        .map(|r,act,ctx|{r});
         Box::pin(fut)
     }
 }
