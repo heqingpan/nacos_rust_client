@@ -18,7 +18,7 @@ use super::{
     config_request_utils::GrpcConfigRequestUtils,
     nacos_proto::{
         bi_request_stream_client::BiRequestStreamClient, request_client::RequestClient, Payload,
-    },
+    }, naming_request_utils::GrpcNamingRequestUtils,
 };
 
 //type SenderType = tokio::sync::mpsc::Sender<Result<Payload, tonic::Status>>;
@@ -341,14 +341,40 @@ impl Handler<NamingRequest> for InnerGrpcClient {
         let manage_addr = self.manage_addr.clone();
         let fut=async move {
             match request {
-                NamingRequest::Register(_) => todo!(),
-                NamingRequest::Unregister(_) => todo!(),
-                NamingRequest::Subscribe(_) => todo!(),
-                NamingRequest::Unsubscribe(_) => todo!(),
-                NamingRequest::QueryInstance(_) => todo!(),
+                NamingRequest::Register(instances) => {
+                    GrpcNamingRequestUtils::batch_register(channel, instances, true).await
+                },
+                NamingRequest::Unregister(instances) => {
+                    GrpcNamingRequestUtils::batch_register(channel, instances, false).await
+                },
+                NamingRequest::Subscribe(service_keys) => {
+                    let mut res= Ok(NamingResponse::None);
+                    for service_key in service_keys {
+                        //TODO 通知
+                        res = GrpcNamingRequestUtils::subscribe(channel.clone(), service_key, true,Some("".to_owned())).await;
+                    }
+                    res
+                },
+                NamingRequest::Unsubscribe(service_keys) => {
+                    let mut res= Ok(NamingResponse::None);
+                    for service_key in service_keys {
+                        res = GrpcNamingRequestUtils::subscribe(channel.clone(), service_key, false,Some("".to_owned())).await;
+                    }
+                    res
+                },
+                NamingRequest::QueryInstance(param) => {
+                    let service_key = param.build_key();
+                    let clusters = if let Some(clusters) = param.clusters {
+                        Some(clusters.join(","))
+                    }
+                    else{
+                        Some("".to_owned())
+                    };
+                    GrpcNamingRequestUtils::query_service(channel, service_key, clusters, Some(param.healthy_only)).await
+                },
                 NamingRequest::V1Heartbeat(_) => todo!(),
             }
-            Ok(NamingResponse::None)
+            //Ok(NamingResponse::None)
         }.into_actor(self)
         .map(|r,act,ctx|{r});
         Box::pin(fut)

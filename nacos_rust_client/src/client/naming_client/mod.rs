@@ -202,6 +202,14 @@ impl QueryInstanceListParams{
         NamingUtils::get_group_and_service_name(&self.service_name, &self.group_name)
     }
 
+    pub fn build_key(&self) -> ServiceInstanceKey {
+        ServiceInstanceKey { 
+            namespace_id: Some(self.namespace_id.clone()), 
+            group_name: self.group_name.clone() , 
+            service_name: self.service_name.clone() 
+        }
+    }
+
     fn to_web_params(&self) -> InstanceWebQueryListParams {
         let mut params = InstanceWebQueryListParams::default();
         params.namespace_id = self.namespace_id.to_owned();

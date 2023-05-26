@@ -85,7 +85,7 @@ impl GrpcNamingRequestUtils {
             ..Default::default()
         };
         let val = serde_json::to_string(&request).unwrap();
-        let payload = PayloadUtils::build_payload("BatchInstanceRequest", val);
+        let payload = PayloadUtils::build_payload("SubscribeServiceRequest", val);
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let body_vec = response.into_inner().body.unwrap_or_default().value;
@@ -110,7 +110,7 @@ impl GrpcNamingRequestUtils {
         }
     }
 
-    pub async fn query_service(channel:Channel,service_key:ServiceInstanceKey,is_subscribe:bool,cluster:Option<String>,healthy_only: Option<bool>) -> anyhow::Result<NamingResponse> {
+    pub async fn query_service(channel:Channel,service_key:ServiceInstanceKey,cluster:Option<String>,healthy_only: Option<bool>) -> anyhow::Result<NamingResponse> {
         let clone_key = service_key.clone();
         let request = ServiceQueryRequest {
             namespace:service_key.namespace_id,
@@ -121,7 +121,7 @@ impl GrpcNamingRequestUtils {
             ..Default::default()
         };
         let val = serde_json::to_string(&request).unwrap();
-        let payload = PayloadUtils::build_payload("BatchInstanceRequest", val);
+        let payload = PayloadUtils::build_payload("ServiceQueryRequest", val);
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let body_vec = response.into_inner().body.unwrap_or_default().value;
@@ -139,9 +139,7 @@ impl GrpcNamingRequestUtils {
             Ok(NamingResponse::ServiceResult(service_result))
         }
         else{
-            if is_subscribe {
-                log::warn!("subscribe service result is empty");
-            }
+            log::warn!("subscribe service result is empty");
             Ok(NamingResponse::None)
         }
     }
