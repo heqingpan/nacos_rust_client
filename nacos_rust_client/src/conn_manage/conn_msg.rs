@@ -32,9 +32,15 @@ pub enum NamingRequest {
     V1Heartbeat(Arc<String>),
 }
 
+#[derive(Debug,Default,Clone)]
+pub struct ServiceResult{
+    pub hosts:Vec<Arc<Instance>>,
+    pub cache_millis:Option<i64>,
+}
+
 #[derive(Debug)]
 pub enum NamingResponse{
-    Instances(Vec<Arc<Instance>>),
+    ServiceResult(ServiceResult),
     None,
 }
 
