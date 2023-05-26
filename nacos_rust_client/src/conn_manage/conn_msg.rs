@@ -35,7 +35,7 @@ pub enum NamingRequest {
 #[derive(Debug,Default,Clone)]
 pub struct ServiceResult{
     pub hosts:Vec<Arc<Instance>>,
-    pub cache_millis:Option<i64>,
+    pub cache_millis:Option<u64>,
 }
 
 #[derive(Debug)]

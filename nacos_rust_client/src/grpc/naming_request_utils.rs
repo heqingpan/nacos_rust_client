@@ -97,7 +97,7 @@ impl GrpcNamingRequestUtils {
             let hosts=service_info.hosts.unwrap_or_default();
             let hosts = hosts.into_iter().map(|e|Arc::new(Self::convert_to_instance(e,&clone_key))).collect::<Vec<Arc<Instance>>>();
             let service_result = ServiceResult {
-                cache_millis:Some(service_info.cache_millis),
+                cache_millis:Some(service_info.cache_millis as u64),
                 hosts,
             };
             Ok(NamingResponse::ServiceResult(service_result))
@@ -133,7 +133,7 @@ impl GrpcNamingRequestUtils {
             let hosts=service_info.hosts.unwrap_or_default();
             let hosts = hosts.into_iter().map(|e|Arc::new(Self::convert_to_instance(e,&clone_key))).collect::<Vec<Arc<Instance>>>();
             let service_result = ServiceResult {
-                cache_millis:Some(service_info.cache_millis),
+                cache_millis:Some(service_info.cache_millis as u64),
                 hosts,
             };
             Ok(NamingResponse::ServiceResult(service_result))

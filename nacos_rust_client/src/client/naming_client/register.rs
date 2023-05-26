@@ -58,7 +58,7 @@ impl InnerNamingRegister {
         if use_grpc {
             if let Some(conn_manage) = &self.conn_manage {
                 if let Some(addr) = conn_manage.upgrade() {
-                    addr.do_send(NamingRequest::Register(vec![instance.clone()]));
+                    addr.do_send(NamingRequest::Unregister(vec![instance.clone()]));
                 }
             }
             return;
@@ -135,8 +135,6 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                     return Ok(());
                 }
                 // request register
-                let time = now_millis();
-                self.timeout_set.add(time+self.period,key.clone());
                 let client = self.request_client.clone();
                 let use_grpc=self.use_grpc.to_owned();
                 if use_grpc {
@@ -145,6 +143,10 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                             addr.do_send(NamingRequest::Register(vec![instance.clone()]));
                         }
                     }
+                }
+                else{
+                    let time = now_millis();
+                    self.timeout_set.add(time+self.period,key.clone());
                 }
                 async move {
                     if !use_grpc {
