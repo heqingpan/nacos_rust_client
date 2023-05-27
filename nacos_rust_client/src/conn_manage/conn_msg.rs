@@ -48,5 +48,5 @@ pub enum NamingResponse{
 #[rtype(result = "anyhow::Result<()>")]
 pub enum ConnCallbackMsg {
     ConfigChange(ConfigKey,String,String),
-    InstanceChange(ServiceInstanceKey,Vec<Instance>),
+    InstanceChange(ServiceInstanceKey,ServiceResult),
 }

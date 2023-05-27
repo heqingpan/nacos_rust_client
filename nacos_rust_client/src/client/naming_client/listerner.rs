@@ -172,6 +172,9 @@ impl InnerNamingListener {
     }
 
     pub fn query_instance(&self, key: String, ctx: &mut actix::Context<Self>) {
+        if self.use_grpc {
+            return;
+        }
         let client = self.request_client.clone();
         if let Some(instance_warp) = self.instances.get(&key) {
             let params = instance_warp.params.clone();
@@ -265,6 +268,17 @@ impl InnerNamingListener {
             }
         }
         Ok(NamingResponse::None)
+    }
+
+    fn do_send_conn_msg(
+        conn_manage: &Option<WeakAddr<ConnManage>>,
+        request: NamingRequest,
+    ) {
+        if let Some(conn_manage) = conn_manage {
+            if let Some(conn_manage) = conn_manage.upgrade() {
+                conn_manage.do_send(request);
+            }
+        }
     }
 
     fn convert_naming_response_to_service_result(
@@ -401,6 +415,7 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                 }
             }
             NamingListenerCmd::AddHeartbeat(key) => {
+                let clone_key = key.clone();
                 let key_str = key.get_key();
                 if let Some(_) = self.instances.get(&key_str) {
                     return Ok(());
@@ -416,12 +431,19 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                     instances.params.udp_port = Some(self.udp_port);
                     instances.next_time = current_time;
                     self.instances.insert(key_str.clone(), instances);
-                    let addr = ctx.address();
-                    addr.do_send(NamingListenerCmd::Heartbeat(key_str, current_time));
+                    if self.use_grpc {
+                        let request = NamingRequest::Subscribe(vec![clone_key]);
+                        Self::do_send_conn_msg(&self.conn_manage , request)
+                    }
+                    else{
+                        let addr = ctx.address();
+                        addr.do_send(NamingListenerCmd::Heartbeat(key_str, current_time));
+                    }
                 }
             }
             NamingListenerCmd::Remove(key, id) => {
                 let key_str = key.get_key();
+                let mut is_empty=false;
                 if let Some(list) = self.listeners.get_mut(&key_str) {
                     let mut indexs = Vec::new();
                     for i in 0..list.len() {
@@ -434,6 +456,12 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                     for i in indexs.iter().rev() {
                         list.remove(*i);
                     }
+                    is_empty = list.len()==0;
+                }
+                if is_empty {
+                    self.listeners.remove(&key_str);
+                    let request = NamingRequest::Unsubscribe(vec![key]);
+                    Self::do_send_conn_msg(&self.conn_manage , request)
                 }
             }
             NamingListenerCmd::Heartbeat(key, time) => {
@@ -514,6 +542,7 @@ type ListenerSenderType = tokio::sync::oneshot::Sender<NamingQueryResult>;
 pub enum NamingQueryCmd {
     QueryList(QueryInstanceListParams, ListenerSenderType),
     Select(QueryInstanceListParams, ListenerSenderType),
+    ChangeResult(ServiceInstanceKey ,ServiceResult),
 }
 
 pub enum NamingQueryResult {
@@ -631,6 +660,11 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
                     .spawn(ctx);
                 }
             }
+            NamingQueryCmd::ChangeResult(service_key, service_result) => {
+                let key = service_key.get_key();
+                println!("naming listener ChangeResult, {}",&key);
+                self.update_instances_and_notify_by_service_result( key, service_result).ok();
+            },
         }
         Ok(NamingQueryResult::None)
     }
