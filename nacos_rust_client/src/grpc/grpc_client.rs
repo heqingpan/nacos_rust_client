@@ -1,20 +1,20 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, time::Duration, sync::Arc};
 
 use actix::{prelude::*, WeakAddr};
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 
 use crate::{
-    client::config_client::{ConfigKey},
+    client::{config_client::{ConfigKey}, naming_client::ServiceInstanceKey},
     conn_manage::{
-        conn_msg::{ConfigRequest, ConfigResponse, ConnCallbackMsg, NamingRequest, NamingResponse},
+        conn_msg::{ConfigRequest, ConfigResponse, ConnCallbackMsg, NamingRequest, NamingResponse, ServiceResult},
         manage::ConnManage,
     },
     grpc::{api_model::ConnectionSetupRequest, channel::CloseableChannel, utils::PayloadUtils},
 };
 
 use super::{
-    api_model::ConfigChangeNotifyRequest,
+    api_model::{ConfigChangeNotifyRequest, NotifySubscriberRequest},
     config_request_utils::GrpcConfigRequestUtils,
     nacos_proto::{
         bi_request_stream_client::BiRequestStreamClient, request_client::RequestClient, Payload,
@@ -184,6 +184,16 @@ impl InnerGrpcClient {
                                 .ok();
                             }
                         }
+                        else if t=="NotifySubscriberRequest" {
+                            if let Ok(request) =
+                                serde_json::from_slice::<NotifySubscriberRequest>(&body_vec)
+                            {
+                                if let Some(manage_addr) = (&manage_addr).upgrade() {
+                                    let (service_key,service_result) = Self::convert_to_service_result(request);
+                                    manage_addr.do_send(ConnCallbackMsg::InstanceChange(service_key, service_result));
+                                }
+                            }
+                        }
                     }
                 } else {
                     break;
@@ -211,7 +221,7 @@ impl InnerGrpcClient {
             match response {
                 Ok(response) => {
                     let res = response.into_inner();
-                    log::info!("check response:{}", &PayloadUtils::get_payload_header(&res));
+                    //log::info!("check response:{}", &PayloadUtils::get_payload_header(&res));
                     if let Some(sender) = sender {
                         sender.send(Ok(res)).ok();
                     }
@@ -227,6 +237,27 @@ impl InnerGrpcClient {
         .into_actor(self)
         .map(|_, _, _| {})
         .spawn(ctx);
+    }
+
+    fn convert_to_service_result(request:NotifySubscriberRequest) -> (ServiceInstanceKey,ServiceResult) {
+        let service_key = ServiceInstanceKey{
+            namespace_id:request.namespace,
+            group_name:request.group_name.unwrap_or_default(),
+            service_name:request.service_name.unwrap_or_default(),
+        };
+        let service_result = if let Some(service_info) =request.service_info {
+            let hosts=service_info.hosts.unwrap_or_default().into_iter()
+                .map(|e|Arc::new(GrpcNamingRequestUtils::convert_to_instance(e, &service_key)))
+                .collect();
+            ServiceResult {
+                hosts,
+                cache_millis:Some(service_info.cache_millis as u64),
+            }
+        }
+        else {
+            Default::default()
+        };
+        (service_key,service_result)
     }
 
     fn check_heartbeat(&mut self, ctx: &mut Context<Self>) {
@@ -350,8 +381,14 @@ impl Handler<NamingRequest> for InnerGrpcClient {
                 NamingRequest::Subscribe(service_keys) => {
                     let mut res= Ok(NamingResponse::None);
                     for service_key in service_keys {
-                        //TODO 通知
-                        res = GrpcNamingRequestUtils::subscribe(channel.clone(), service_key, true,Some("".to_owned())).await;
+                        res = GrpcNamingRequestUtils::subscribe(channel.clone(), service_key.clone(), true,Some("".to_owned())).await;
+                        if let Ok(res) = &res {
+                            if let NamingResponse::ServiceResult(service_result)=res {
+                                if let Some(manage_addr) = (&manage_addr).upgrade() {
+                                    manage_addr.do_send(ConnCallbackMsg::InstanceChange(service_key, service_result.clone()));
+                                }
+                            }
+                        }
                     }
                     res
                 },

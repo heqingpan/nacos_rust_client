@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use actix::{prelude::*, WeakAddr};
 
-use crate::{client::{AuthInfo, HostInfo, naming_client::NamingUtils, config_client::{inner::ConfigInnerCmd, model::NotifyConfigItem, ConfigInnerActor}, nacos_client::{ActixSystemCmd, ActixSystemResult}}, init_global_system_actor, ActorCreate};
+use crate::{client::{AuthInfo, HostInfo, naming_client::{NamingUtils, InnerNamingListener, NamingQueryCmd}, config_client::{inner::ConfigInnerCmd, model::NotifyConfigItem, ConfigInnerActor}, nacos_client::{ActixSystemCmd, ActixSystemResult}}, init_global_system_actor, ActorCreate};
 
 use super::{inner_conn::InnerConn, breaker::BreakerConfig, conn_msg::{ConnCallbackMsg, ConfigResponse, ConfigRequest, NamingRequest, NamingResponse}, NotifyCallbackAddr};
 
@@ -87,6 +87,7 @@ impl Actor for ConnManage {
 #[rtype(result = "anyhow::Result<()>")]
 pub enum ConnManageCmd{
     ConfigInnerActorAddr(WeakAddr<ConfigInnerActor>),
+    NamingListenerActorAddr(WeakAddr<InnerNamingListener>),
 }
 
 impl Handler<ConnManageCmd> for ConnManage {
@@ -96,6 +97,9 @@ impl Handler<ConnManageCmd> for ConnManage {
         match msg {
             ConnManageCmd::ConfigInnerActorAddr(addr) => {
                 self.callback.config_inner_addr = Some(addr);
+            },
+            ConnManageCmd::NamingListenerActorAddr(addr) => {
+                self.callback.naming_listener_addr = Some(addr);
             },
         }
         Ok(())
@@ -119,7 +123,13 @@ impl Handler<ConnCallbackMsg> for ConnManage {
                         }
                     }
                 },
-                ConnCallbackMsg::InstanceChange(_, _) => todo!(),
+                ConnCallbackMsg::InstanceChange(key, service_result) => {
+                    if let Some(config_addr)=callbacb.naming_listener_addr{
+                        if let Some(config_addr)=config_addr.upgrade() {
+                            config_addr.do_send(NamingQueryCmd::ChangeResult(key,service_result));
+                        }
+                    }
+                },
             }
             //...
             Ok(())

@@ -15,7 +15,7 @@ pub(crate) struct GrpcNamingRequestUtils;
 
 impl GrpcNamingRequestUtils {
 
-    fn convert_to_api_instance(input:Instance) -> ApiInstance {
+    pub(crate) fn convert_to_api_instance(input:Instance) -> ApiInstance {
         ApiInstance {
             ip: Some(input.ip),
             port: input.port,
@@ -30,7 +30,7 @@ impl GrpcNamingRequestUtils {
         }
     }
 
-    fn convert_to_instance(input:ApiInstance,service_key:&ServiceInstanceKey) -> Instance {
+    pub(crate) fn convert_to_instance(input:ApiInstance,service_key:&ServiceInstanceKey) -> Instance {
         Instance { 
             ip:input.ip.unwrap_or_default(),
             port:input.port,

@@ -11,6 +11,7 @@ use crate::conn_manage::conn_msg::NamingRequest;
 use crate::conn_manage::conn_msg::NamingResponse;
 use crate::conn_manage::conn_msg::ServiceResult;
 use crate::conn_manage::manage::ConnManage;
+use crate::conn_manage::manage::ConnManageCmd;
 use actix::prelude::*;
 use actix::WeakAddr;
 use inner_mem_cache::TimeoutSet;
@@ -368,8 +369,17 @@ impl Actor for InnerNamingListener {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         log::info!(" InnerNamingListener started");
-        self.init_udp_info(ctx);
-        self.hb(ctx);
+        if self.use_grpc {
+            if let Some(addr) = &self.conn_manage {
+                if let Some(addr) = addr.upgrade() {
+                    addr.do_send(ConnManageCmd::NamingListenerActorAddr(ctx.address().downgrade()));
+                }
+            }
+        }
+        else {
+            self.init_udp_info(ctx);
+            self.hb(ctx);
+        }
     }
 }
 
@@ -662,7 +672,7 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
             }
             NamingQueryCmd::ChangeResult(service_key, service_result) => {
                 let key = service_key.get_key();
-                println!("naming listener ChangeResult, {}",&key);
+                //println!("naming listener ChangeResult, {}",&key);
                 self.update_instances_and_notify_by_service_result( key, service_result).ok();
             },
         }

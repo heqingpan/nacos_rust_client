@@ -334,9 +334,9 @@ pub struct NotifySubscriberRequest {
     pub request_id:Option<String>,
     pub headers:HashMap<String,String>,
 
-    pub namespace:Option<Arc<String>>,
-    pub service_name:Option<Arc<String>>,
-    pub group_name:Option<Arc<String>>,
+    pub namespace:Option<String>,
+    pub service_name:Option<String>,
+    pub group_name:Option<String>,
 
     pub service_info: Option<ServiceInfo>,
 }
