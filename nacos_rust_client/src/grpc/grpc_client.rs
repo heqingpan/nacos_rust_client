@@ -326,10 +326,26 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
                     return GrpcConfigRequestUtils::config_query(channel, config_key).await;
                 }
                 ConfigRequest::SetConfig(config_key, content) => {
-                    return GrpcConfigRequestUtils::config_publish(channel, config_key, content).await;
+                    let res=GrpcConfigRequestUtils::config_publish(channel.clone(), config_key.clone(), content).await;
+                    Self::do_config_change_notify(
+                        channel.clone(),
+                        &manage_addr,
+                        config_key,
+                    )
+                    .await
+                    .ok();
+                    return res;
                 }
                 ConfigRequest::DeleteConfig(config_key) => {
-                    return GrpcConfigRequestUtils::config_remove(channel, config_key).await;
+                    let res = GrpcConfigRequestUtils::config_remove(channel.clone(), config_key.clone()).await;
+                    Self::do_config_change_notify(
+                        channel.clone(),
+                        &manage_addr,
+                        config_key,
+                    )
+                    .await
+                    .ok();
+                    return res;
                 }
                 ConfigRequest::V1Listen(_) => {
                     return Err(anyhow::anyhow!("not support"));
