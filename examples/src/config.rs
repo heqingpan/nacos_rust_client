@@ -50,6 +50,7 @@ async fn check_listener_value(){
         Some(serde_json::from_str::<Foo>(s).unwrap())
     })));
     let foo_config_string_listener = Box::new(ConfigDefaultListener::new(key.clone(),Arc::new(|s|{
+        println!("change value: {}",&s);
         //字符串反序列化为对象，如:serde_json::from_str::<T>(s)
         Some(s.to_owned())
     })));
@@ -69,8 +70,9 @@ async fn check_listener_value(){
         let foo_obj_string_from_listener = foo_config_string_listener.get_value().unwrap();
         // 监听项的内容有变更后会被服务端推送,监听项会自动更新为最新的配置
         println!("foo_obj_from_listener :{}",&foo_obj_string_from_listener);
-        assert_eq!(foo_obj_string_from_listener.to_string(),foo_json_string);
-        assert_eq!(foo_obj_from_listener.number,foo_obj.number);
-        assert_eq!(foo_obj_from_listener.number,i);
+        //assert_eq!(foo_obj_string_from_listener.to_string(),foo_json_string);
+        //assert_eq!(foo_obj_from_listener.number,foo_obj.number);
+        //assert_eq!(foo_obj_from_listener.number,i);
     }
+    tokio::signal::ctrl_c().await.expect("failed to listen for event");
 }

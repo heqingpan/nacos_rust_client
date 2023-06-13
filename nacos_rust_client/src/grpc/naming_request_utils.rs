@@ -66,7 +66,8 @@ impl GrpcNamingRequestUtils {
         let payload = PayloadUtils::build_payload("BatchInstanceRequest", val);
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
-        let body_vec = response.into_inner().body.unwrap_or_default().value;
+        let payload = response.into_inner();
+        let body_vec = payload.body.unwrap_or_default().value;
         let res:BaseResponse= serde_json::from_slice(&body_vec)?;
         if res.error_code!=200u16 {
             return Err(anyhow::anyhow!("response error code"))
@@ -88,7 +89,8 @@ impl GrpcNamingRequestUtils {
         let payload = PayloadUtils::build_payload("SubscribeServiceRequest", val);
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
-        let body_vec = response.into_inner().body.unwrap_or_default().value;
+        let payload = response.into_inner();
+        let body_vec = payload.body.unwrap_or_default().value;
         let res:SubscribeServiceResponse= serde_json::from_slice(&body_vec)?;
         if res.error_code!=200u16 {
             return Err(anyhow::anyhow!("response error code"))
@@ -124,7 +126,8 @@ impl GrpcNamingRequestUtils {
         let payload = PayloadUtils::build_payload("ServiceQueryRequest", val);
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
-        let body_vec = response.into_inner().body.unwrap_or_default().value;
+        let payload = response.into_inner();
+        let body_vec = payload.body.unwrap_or_default().value;
         let res:ServiceQueryResponse= serde_json::from_slice(&body_vec)?;
         if res.error_code!=200u16 {
             return Err(anyhow::anyhow!("response error code"))

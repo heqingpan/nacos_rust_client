@@ -21,7 +21,10 @@ impl GrpcConfigRequestUtils {
         let payload = PayloadUtils::build_payload("ConfigQueryRequest", val);
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
-        let body_vec = response.into_inner().body.unwrap_or_default().value;
+        let payload = response.into_inner();
+        //debug
+        log::info!("config_query,{}",&PayloadUtils::get_payload_string(&payload));
+        let body_vec = payload.body.unwrap_or_default().value;
         let response:ConfigQueryResponse= serde_json::from_slice(&body_vec)?;
         let md5 = response.md5.unwrap_or_else(||get_md5(&response.content));
         Ok(ConfigResponse::ConfigValue(response.content,md5))
@@ -39,7 +42,10 @@ impl GrpcConfigRequestUtils {
         let payload = PayloadUtils::build_payload("ConfigPublishRequest", val);
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
-        let body_vec = response.into_inner().body.unwrap_or_default().value;
+        let payload = response.into_inner();
+        //debug
+        log::info!("config_publish,{}",&PayloadUtils::get_payload_string(&payload));
+        let body_vec = payload.body.unwrap_or_default().value;
         let _:BaseResponse= serde_json::from_slice(&body_vec)?;
         Ok(ConfigResponse::None)
     }
@@ -55,7 +61,10 @@ impl GrpcConfigRequestUtils {
         let payload = PayloadUtils::build_payload("ConfigRemoveRequest", val);
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
-        let body_vec = response.into_inner().body.unwrap_or_default().value;
+        let payload = response.into_inner();
+        //debug
+        log::info!("config_remove,{}",&PayloadUtils::get_payload_string(&payload));
+        let body_vec = payload.body.unwrap_or_default().value;
         let _:BaseResponse= serde_json::from_slice(&body_vec)?;
         Ok(ConfigResponse::None)
     }
@@ -77,7 +86,10 @@ impl GrpcConfigRequestUtils {
         let payload = PayloadUtils::build_payload("ConfigBatchListenRequest", val);
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
-        let body_vec = response.into_inner().body.unwrap_or_default().value;
+        let payload = response.into_inner();
+        //debug
+        log::info!("config_change_batch_listen,{}",&PayloadUtils::get_payload_string(&payload));
+        let body_vec = payload.body.unwrap_or_default().value;
         let response:ConfigChangeBatchListenResponse= serde_json::from_slice(&body_vec)?;
         let keys:Vec<ConfigKey> = response.changed_configs.into_iter().map(|e| ConfigKey{
             tenant:e.tenant,

@@ -163,6 +163,8 @@ impl InnerGrpcClient {
         async move {
             while let Some(item) = receiver_stream.next().await {
                 if let Ok(payload) = item {
+                    //debug
+                    log::info!("receive_bi_stream,{}",&PayloadUtils::get_payload_string(&payload));
                     if let Some(t) = PayloadUtils::get_metadata_type(&payload.metadata) {
                         let body_vec = payload.body.unwrap_or_default().value;
                         if t == "ConfigChangeNotifyRequest" {
@@ -221,7 +223,7 @@ impl InnerGrpcClient {
             match response {
                 Ok(response) => {
                     let res = response.into_inner();
-                    //log::info!("check response:{}", &PayloadUtils::get_payload_header(&res));
+                    log::info!("check response:{}", &PayloadUtils::get_payload_header(&res));
                     if let Some(sender) = sender {
                         sender.send(Ok(res)).ok();
                     }
