@@ -26,6 +26,7 @@ async fn main(){
         |instances,add_list,remove_list| {
             println!("service instances change,count:{},add count:{},remove count:{}",instances.len(),add_list.len(),remove_list.len());
         })));
+    tokio::time::sleep(Duration::from_millis(3000)).await;
     client.subscribe(Box::new(default_listener.clone())).await.unwrap();
     let ip = local_ipaddress::get().unwrap();
     let service_name = "foo";

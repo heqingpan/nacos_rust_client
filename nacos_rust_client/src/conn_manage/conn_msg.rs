@@ -24,8 +24,9 @@ pub enum ConfigResponse{
 #[derive(Debug, Message)]
 #[rtype(result = "anyhow::Result<NamingResponse>")]
 pub enum NamingRequest {
-    Register(Vec<Instance>),
-    Unregister(Vec<Instance>),
+    Register(Instance),
+    Unregister(Instance),
+    BatchRegister(Vec<Instance>),
     Subscribe(Vec<ServiceInstanceKey>),
     Unsubscribe(Vec<ServiceInstanceKey>),
     QueryInstance(Box<QueryInstanceListParams>),

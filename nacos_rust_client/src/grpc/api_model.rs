@@ -18,6 +18,15 @@ pub type ErrorResponse= BaseResponse;
 
 impl BaseResponse {
 
+    pub fn build_with_request_id(request_id:Option<String>) -> Self {
+        Self { 
+            result_code: SUCCESS_CODE,
+            error_code:0,
+            message: None,
+            request_id,
+        }
+    }
+
     pub fn build_success_response() -> Self {
         Self { 
             result_code: SUCCESS_CODE,
@@ -183,7 +192,7 @@ pub struct ConfigChangeNotifyRequest {
 
     pub data_id: String,
     pub group: String,
-    pub tenant: String,
+    pub tenant: Option<String>,
 }
 
 // ----- naming model -----

@@ -58,7 +58,7 @@ impl InnerNamingRegister {
         if use_grpc {
             if let Some(conn_manage) = &self.conn_manage {
                 if let Some(addr) = conn_manage.upgrade() {
-                    addr.do_send(NamingRequest::Unregister(vec![instance.clone()]));
+                    addr.do_send(NamingRequest::Unregister(instance.clone()));
                 }
             }
             return;
@@ -140,7 +140,7 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                 if use_grpc {
                     if let Some(conn_manage) = &self.conn_manage {
                         if let Some(addr) = conn_manage.upgrade() {
-                            addr.do_send(NamingRequest::Register(vec![instance.clone()]));
+                            addr.do_send(NamingRequest::Register(instance.clone()));
                         }
                     }
                 }
