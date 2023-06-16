@@ -672,7 +672,7 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
             }
             NamingQueryCmd::ChangeResult(service_key, service_result) => {
                 let key = service_key.get_key();
-                //println!("naming listener ChangeResult, {}",&key);
+                println!("naming listener ChangeResult, {}",&key);
                 self.update_instances_and_notify_by_service_result( key, service_result).ok();
             },
         }

@@ -261,13 +261,13 @@ pub struct SubscribeServiceRequest {
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceInfo {
-    pub name: Option<Arc<String>>,
-    pub group_name: Option<Arc<String>>,
+    pub name: Option<String>,
+    pub group_name: Option<String>,
     pub clusters: Option<String>,
     pub cache_millis: i64,
     pub hosts: Option<Vec<Instance>>,
     pub last_ref_time: i64,
-    pub checksum: i64,
+    //pub checksum: Option<String>,
     #[serde(rename = "allIPs")]
     pub all_ips:bool,
     pub reach_protection_threshold: bool,
