@@ -5,7 +5,7 @@ use tonic::transport::Channel;
 
 use crate::{grpc::grpc_client::InnerGrpcClient, client::{HostInfo, AuthInfo}};
 
-use super::{breaker::{Breaker, BreakerConfig}, NotifyCallbackAddr, manage::ConnManage};
+use super::{breaker::{Breaker, BreakerConfig}, manage::ConnManage};
 
 
 

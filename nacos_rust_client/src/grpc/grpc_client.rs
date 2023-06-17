@@ -23,7 +23,7 @@ use crate::{
 use super::{
     api_model::{ConfigChangeNotifyRequest, NotifySubscriberRequest},
     config_request_utils::GrpcConfigRequestUtils,
-    constant::{LABEL_MODULE, LABEL_MODULE_CONFIG, LABEL_MODULE_NAMING},
+    constant::*,
     nacos_proto::{
         bi_request_stream_client::BiRequestStreamClient, request_client::RequestClient, Payload,
     },
@@ -140,8 +140,10 @@ impl InnerGrpcClient {
             return false;
         }
         .into_actor(self)
-        .map(|r, act, _ctx| {
-            act.conn_reader=r;
+        .map(|_r, act, _ctx| {
+            //TODO 如果注册失败，触发重新建立链接
+            //act.conn_reader=r;
+            act.conn_reader=true;
         })
         .wait(ctx);
     }
@@ -193,12 +195,8 @@ impl InnerGrpcClient {
         manage_addr: &WeakAddr<ConnManage>,
         config_key: ConfigKey,
     ) -> anyhow::Result<()> {
-        log::info!(
-            "config change notify:{}#{}#{}",
-            &config_key.data_id,
-            &config_key.group,
-            &config_key.tenant
-        );
+        //debug
+        //log::info!( "config change notify:{}#{}#{}", &config_key.data_id, &config_key.group, &config_key.tenant);
         if let ConfigResponse::ConfigValue(content, md5) =
             GrpcConfigRequestUtils::config_query(channel, Some(request_id), config_key.clone())
                 .await?
@@ -311,7 +309,8 @@ impl InnerGrpcClient {
             match response {
                 Ok(response) => {
                     let res = response.into_inner();
-                    log::info!("check response:{}", &PayloadUtils::get_payload_header(&res));
+                    //debug
+                    //log::info!("check response:{}", &PayloadUtils::get_payload_header(&res));
                     if let Some(sender) = sender {
                         sender.send(Ok(res)).ok();
                     }

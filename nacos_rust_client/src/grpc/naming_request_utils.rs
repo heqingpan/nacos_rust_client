@@ -50,7 +50,7 @@ impl GrpcNamingRequestUtils {
     }
 
     pub async fn instance_register(channel:Channel,instance:Instance,is_reqister:bool) -> anyhow::Result<NamingResponse> {
-        let mut request = InstanceRequest {
+        let request = InstanceRequest {
             namespace:Some(instance.namespace_id.to_owned()),
             service_name:Some(instance.service_name.to_owned()),
             group_name:Some(instance.group_name.to_owned()),
@@ -62,14 +62,17 @@ impl GrpcNamingRequestUtils {
         
         let val = serde_json::to_string(&request).unwrap();
         let payload = PayloadUtils::build_payload("InstanceRequest", val);
-        log::info!("instance_register request,{}",&PayloadUtils::get_payload_string(&payload));
+        //debug
+        //log::info!("instance_register request,{}",&PayloadUtils::get_payload_string(&payload));
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let payload = response.into_inner();
-        log::info!("instance_register,{}",&PayloadUtils::get_payload_string(&payload));
+        //debug
+        //log::info!("instance_register,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
         let res:BaseResponse= serde_json::from_slice(&body_vec)?;
-        if res.error_code!=200u16 {
+        if res.result_code!=200u16 {
+            log::warn!("instance_register response error,{}",String::from_utf8(body_vec)?);
             return Err(anyhow::anyhow!("response error code"))
         }
         Ok(NamingResponse::None)
@@ -97,10 +100,12 @@ impl GrpcNamingRequestUtils {
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let payload = response.into_inner();
-        log::info!("batch_register,{}",&PayloadUtils::get_payload_string(&payload));
+        //debug
+        //log::info!("batch_register,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
         let res:BaseResponse= serde_json::from_slice(&body_vec)?;
-        if res.error_code!=200u16 {
+        if res.result_code!=200u16 {
+            log::warn!("batch_register response error,{}",String::from_utf8(body_vec)?);
             return Err(anyhow::anyhow!("response error code"))
         }
         Ok(NamingResponse::None)
@@ -122,10 +127,12 @@ impl GrpcNamingRequestUtils {
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let payload = response.into_inner();
-        log::info!("subscribe,{}",&PayloadUtils::get_payload_string(&payload));
+        //debug
+        //log::info!("subscribe,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
         let res:SubscribeServiceResponse= serde_json::from_slice(&body_vec)?;
-        if res.error_code!=200u16 {
+        if res.result_code!=200u16 {
+            log::warn!("subscribe response error,{}",String::from_utf8(body_vec)?);
             return Err(anyhow::anyhow!("response error code"))
         }
         if let Some(service_info) = res.service_info {
@@ -161,10 +168,11 @@ impl GrpcNamingRequestUtils {
         let  mut request_client = RequestClient::new(channel);
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let payload = response.into_inner();
-        log::info!("query_service,{}",&PayloadUtils::get_payload_string(&payload));
+        //log::info!("query_service,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
         let res:ServiceQueryResponse= serde_json::from_slice(&body_vec)?;
-        if res.error_code!=200u16 {
+        if res.result_code!=200u16 {
+            log::warn!("query_service response error,{}",String::from_utf8(body_vec)?);
             return Err(anyhow::anyhow!("response error code"))
         }
         if let Some(service_info) = res.service_info {

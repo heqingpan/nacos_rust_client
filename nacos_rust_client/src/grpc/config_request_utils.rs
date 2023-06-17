@@ -27,7 +27,7 @@ impl GrpcConfigRequestUtils {
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let payload = response.into_inner();
         //debug
-        log::info!("check_register,{}",&PayloadUtils::get_payload_string(&payload));
+        //log::info!("check_register,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
         let response:BaseResponse= serde_json::from_slice(&body_vec)?;
         if response.error_code==301u16 {
@@ -53,9 +53,13 @@ impl GrpcConfigRequestUtils {
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let payload = response.into_inner();
         //debug
-        log::info!("config_query,{}",&PayloadUtils::get_payload_string(&payload));
+        //log::info!("config_query,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
         let response:ConfigQueryResponse= serde_json::from_slice(&body_vec)?;
+        if response.result_code!=200u16 {
+            log::warn!("config_query response error,{}",String::from_utf8(body_vec)?);
+            return Err(anyhow::anyhow!("response error code"))
+        }
         let md5 = response.md5.unwrap_or_else(||get_md5(&response.content));
         Ok(ConfigResponse::ConfigValue(response.content,md5))
     }
@@ -76,9 +80,13 @@ impl GrpcConfigRequestUtils {
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let payload = response.into_inner();
         //debug
-        log::info!("config_publish,{}",&PayloadUtils::get_payload_string(&payload));
+        //log::info!("config_publish,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
-        let _:BaseResponse= serde_json::from_slice(&body_vec)?;
+        let response:BaseResponse= serde_json::from_slice(&body_vec)?;
+        if response.result_code!=200u16 {
+            log::warn!("config_publish response error,{}",String::from_utf8(body_vec)?);
+            return Err(anyhow::anyhow!("response error code"))
+        }
         Ok(ConfigResponse::None)
     }
 
@@ -97,9 +105,13 @@ impl GrpcConfigRequestUtils {
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let payload = response.into_inner();
         //debug
-        log::info!("config_remove,{}",&PayloadUtils::get_payload_string(&payload));
+        //log::info!("config_remove,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
-        let _:BaseResponse= serde_json::from_slice(&body_vec)?;
+        let response:BaseResponse= serde_json::from_slice(&body_vec)?;
+        if response.result_code!=200u16 {
+            log::warn!("config_remove response error,{}",String::from_utf8(body_vec)?);
+            return Err(anyhow::anyhow!("response error code"))
+        }
         Ok(ConfigResponse::None)
     }
 
@@ -124,9 +136,13 @@ impl GrpcConfigRequestUtils {
         let response =request_client.request(tonic::Request::new(payload)).await?;
         let payload = response.into_inner();
         //debug
-        log::info!("config_change_batch_listen,{}",&PayloadUtils::get_payload_string(&payload));
+        //log::info!("config_change_batch_listen,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
         let response:ConfigChangeBatchListenResponse= serde_json::from_slice(&body_vec)?;
+        if response.result_code!=200u16 {
+            log::warn!("config_change_batch_listen response error,{}",String::from_utf8(body_vec)?);
+            return Err(anyhow::anyhow!("response error code"))
+        }
         let keys:Vec<ConfigKey> = response.changed_configs.into_iter().map(|e| ConfigKey{
             tenant:e.tenant,
             data_id:e.data_id,
