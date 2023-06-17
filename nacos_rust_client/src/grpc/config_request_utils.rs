@@ -1,6 +1,6 @@
 use tonic::transport::Channel;
 
-use crate::{client::{config_client::ConfigKey, get_md5}, conn_manage::conn_msg::{ConfigResponse}, grpc::constant::LABEL_MODULE_CONFIG};
+use crate::{client::{config_client::ConfigKey, get_md5, now_millis}, conn_manage::conn_msg::{ConfigResponse}, grpc::constant::LABEL_MODULE_CONFIG};
 
 use super::{api_model::{ConfigQueryRequest, ConfigQueryResponse, ConfigPublishRequest, BaseResponse, ConfigRemoveRequest, ConfigBatchListenRequest, ConfigListenContext, ConfigChangeBatchListenResponse}, utils::PayloadUtils, nacos_proto::request_client::RequestClient};
 
@@ -9,6 +9,34 @@ use super::{api_model::{ConfigQueryRequest, ConfigQueryResponse, ConfigPublishRe
 pub(crate) struct GrpcConfigRequestUtils;
 
 impl GrpcConfigRequestUtils {
+
+    pub async fn check_register(channel:Channel)-> anyhow::Result<bool>{
+        let check_id = format!("__check_register_{}",now_millis());
+        let config_key = ConfigKey::new(&check_id,"__check","");
+        let request = ConfigQueryRequest {
+            data_id:config_key.data_id,
+            group:config_key.group,
+            tenant:config_key.tenant,
+            module: Some(LABEL_MODULE_CONFIG.to_owned()),
+            request_id:Some(check_id),
+            ..Default::default()
+        };
+        let val = serde_json::to_string(&request).unwrap();
+        let payload = PayloadUtils::build_payload("ConfigQueryRequest", val);
+        let  mut request_client = RequestClient::new(channel);
+        let response =request_client.request(tonic::Request::new(payload)).await?;
+        let payload = response.into_inner();
+        //debug
+        log::info!("check_register,{}",&PayloadUtils::get_payload_string(&payload));
+        let body_vec = payload.body.unwrap_or_default().value;
+        let response:BaseResponse= serde_json::from_slice(&body_vec)?;
+        if response.error_code==301u16 {
+            Ok(false)
+        }
+        else {
+            Ok(true)
+        }
+    }
 
     pub async fn config_query(channel:Channel,request_id:Option<String>,config_key:ConfigKey) -> anyhow::Result<ConfigResponse> {
         let request = ConfigQueryRequest {

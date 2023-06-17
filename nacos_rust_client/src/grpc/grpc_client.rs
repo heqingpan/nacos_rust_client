@@ -42,6 +42,7 @@ pub struct InnerGrpcClient {
     //request_client: RequestClient<Channel>,
     stream_sender: Option<BiStreamSenderType>,
     stream_reader: bool,
+    conn_reader: bool,
     manage_addr: WeakAddr<ConnManage>,
     request_id: u64,
 }
@@ -64,6 +65,7 @@ impl InnerGrpcClient {
             //request_client,
             stream_sender: Default::default(),
             stream_reader: false,
+            conn_reader: false,
             manage_addr,
             request_id: 0,
         })
@@ -118,6 +120,32 @@ impl InnerGrpcClient {
         Ok(())
     }
 
+    fn wait_check_register(&mut self,ctx:&mut Context<Self>) {
+        let channel = self.channel.clone();
+        async move {
+            for _ in 0..100 {
+                match GrpcConfigRequestUtils::check_register(channel.clone()).await {
+                    Ok(r) => {
+                        if r {
+                            return true;
+                        }
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    },
+                    Err(err) =>{
+                        log::error!( "check_register error,{}",err.to_string());
+                        return false;
+                    },
+                }
+            }
+            return false;
+        }
+        .into_actor(self)
+        .map(|r, act, _ctx| {
+            act.conn_reader=r;
+        })
+        .wait(ctx);
+    }
+
     fn bi_stream_setup(&mut self, ctx: &mut Context<Self>) {
         let tx = self.stream_sender.clone().unwrap();
         async move {
@@ -150,7 +178,12 @@ impl InnerGrpcClient {
             //manage.do_send(BiStreamManageCmd::ConnClose(client_id));
         }
         .into_actor(self)
-        .map(|_, _, _ctx| {})
+        .map(|_, _, ctx| {
+            ctx.run_later(Duration::from_millis(50), |act,inner_ctx|{
+                act.wait_check_register(inner_ctx);
+            });
+        })
+        //.wait(ctx);
         .wait(ctx);
     }
 
@@ -381,8 +414,14 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
     fn handle(&mut self, config_request: ConfigRequest, ctx: &mut Self::Context) -> Self::Result {
         let channel = self.channel.clone();
         let manage_addr = self.manage_addr.clone();
+        let conn_reader = self.conn_reader;
         let request_id = self.next_request_id();
         let fut = async move {
+            if !conn_reader {
+                //等链接确认后再请求
+                log::info!("wait check register,than handle msg");
+                tokio::time::sleep(Duration::from_millis(60)).await;
+            }
             match config_request {
                 ConfigRequest::GetConfig(config_key) => {
                     return GrpcConfigRequestUtils::config_query(
@@ -468,8 +507,14 @@ impl Handler<NamingRequest> for InnerGrpcClient {
 
     fn handle(&mut self, request: NamingRequest, ctx: &mut Self::Context) -> Self::Result {
         let channel = self.channel.clone();
+        let conn_reader = self.conn_reader;
         let manage_addr = self.manage_addr.clone();
         let fut = async move {
+            if !conn_reader {
+                //等链接确认后再请求
+                log::info!("wait check register,than handle msg");
+                tokio::time::sleep(Duration::from_millis(60)).await;
+            }
             match request {
                 NamingRequest::Register(instance) => {
                     GrpcNamingRequestUtils::instance_register(channel, instance, true).await
