@@ -42,7 +42,7 @@ impl ConnManage {
         }
     }
 
-    pub fn init_grpc_conn(&mut self,ctx: &mut Context<Self>) {
+    fn init_grpc_conn(&mut self,ctx: &mut Context<Self>) {
         self.current_index = self.select_index();
         let conn = self.conns.get_mut(self.current_index).unwrap();
         let addr = ctx.address().downgrade();
