@@ -17,6 +17,7 @@ actix = "0.12"
 log="0"
 env_logger = "0.7"
 local_ipaddress = "0.1.3"
+ctrlc = "3.4.0"
 
 tonic = "0.7"
 prost = "0.10"
@@ -28,6 +29,10 @@ path = "src/config.rs"
 [[example]]
 name="naming_register"
 path = "src/naming_register.rs"
+
+[[example]]
+name="naming_only_register"
+path = "src/naming_only_register.rs"
 
 [[example]]
 name="tonic_discover_service"

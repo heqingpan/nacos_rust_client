@@ -294,6 +294,13 @@ pub fn set_global_system_actor(addr:Addr<ActixSystemActor>) {
     *r = Some(addr);
 }
 
+pub fn clear_global_system_actor() -> Option<Addr<ActixSystemActor>> {
+    let mut r = ACTIX_SYSTEM.lock().unwrap();
+    let result = r.clone();
+    *r = None;
+    result
+}
+
 pub fn init_global_system_actor() -> Addr<ActixSystemActor> {
     if let Some(r)= get_global_system_actor() {
         return r;
