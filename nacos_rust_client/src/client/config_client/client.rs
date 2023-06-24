@@ -25,10 +25,11 @@ impl Drop for ConfigClient {
 
 impl ConfigClient {
     pub fn new(host:HostInfo,tenant:String) -> Arc<Self> {
+        let use_grpc=true;
         let request_client = ConfigInnerRequestClient::new(host.clone());
-        let conn_manage=ConnManage::new(vec![host.clone()],true,None,Default::default());
+        let conn_manage=ConnManage::new(vec![host.clone()],use_grpc,None,Default::default());
         let conn_manage_addr = conn_manage.start_at_global_system();
-        let (config_inner_addr,_) = Self::init_register(request_client.clone(),None,Some(conn_manage_addr.clone().downgrade()));
+        let (config_inner_addr,_) = Self::init_register(request_client.clone(),None,Some(conn_manage_addr.clone().downgrade()),use_grpc);
         //request_client.set_auth_addr(auth_addr);
         let r=Arc::new(Self{
             tenant,
@@ -42,11 +43,12 @@ impl ConfigClient {
     }
 
     pub fn new_with_addrs(addrs:&str,tenant:String,auth_info:Option<AuthInfo>) -> Arc<Self> {
+        let use_grpc=false;
         let endpoint = Arc::new(ServerEndpointInfo::new(addrs));
-        let conn_manage=ConnManage::new(endpoint.hosts.clone(),true,auth_info.clone(),Default::default());
+        let conn_manage=ConnManage::new(endpoint.hosts.clone(),use_grpc.to_owned(),auth_info.clone(),Default::default());
         let conn_manage_addr = conn_manage.start_at_global_system();
         let mut request_client = ConfigInnerRequestClient::new_with_endpoint(endpoint);
-        let (config_inner_addr,auth_addr) = Self::init_register(request_client.clone(),auth_info,Some(conn_manage_addr.clone().downgrade()));
+        let (config_inner_addr,auth_addr) = Self::init_register(request_client.clone(),auth_info,Some(conn_manage_addr.clone().downgrade()),use_grpc);
         request_client.set_auth_addr(auth_addr);
         let r=Arc::new(Self{
             tenant,
@@ -59,7 +61,7 @@ impl ConfigClient {
         r
     }
 
-    fn init_register(mut request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>,conn_manage_addr:Option<WeakAddr<ConnManage>>) -> (Addr<ConfigInnerActor>,Addr<AuthActor>){
+    fn init_register(mut request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>,conn_manage_addr:Option<WeakAddr<ConnManage>>,use_grpc:bool) -> (Addr<ConfigInnerActor>,Addr<AuthActor>){
         let system_addr =  init_global_system_actor();
         let endpoint=request_client.endpoints.clone();
         let actor = AuthActor::new(endpoint,auth_info);
@@ -71,7 +73,7 @@ impl ConfigClient {
             _ => panic!("init actor error"),
         };
         request_client.set_auth_addr(auth_addr.clone());
-        let actor = ConfigInnerActor::new(request_client,conn_manage_addr);
+        let actor = ConfigInnerActor::new(request_client,use_grpc,conn_manage_addr);
         let (tx,rx) = std::sync::mpsc::sync_channel(1);
         let msg = ActixSystemCmd::ConfigInnerActor(actor,tx);
         system_addr.do_send(msg);

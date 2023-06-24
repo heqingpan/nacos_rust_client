@@ -468,7 +468,7 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
                     return res;
                 }
                 ConfigRequest::V1Listen(_) => {
-                    return Err(anyhow::anyhow!("not support"));
+                    return Err(anyhow::anyhow!("grpc not support"));
                 }
                 ConfigRequest::Listen(listen_items, listen) => {
                     //println!("grpc Listen");

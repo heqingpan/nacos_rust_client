@@ -3,7 +3,7 @@ use std::{sync::Arc};
 use actix::{Actor, Addr, WeakAddr};
 use tonic::transport::Channel;
 
-use crate::{grpc::grpc_client::InnerGrpcClient, client::{HostInfo, AuthInfo}};
+use crate::{grpc::grpc_client::InnerGrpcClient, client::{HostInfo, AuthInfo, config_client::inner_client::ConfigInnerRequestClient, naming_client::InnerNamingRequestClient}};
 
 use super::{breaker::{Breaker, BreakerConfig}, manage::ConnManage};
 
@@ -15,23 +15,26 @@ pub(crate) struct InnerConn {
     pub host_info:HostInfo,
     pub breaker:Breaker,
     pub support_grpc: bool,
-    pub auth_info:Option<AuthInfo>,
     pub channel: Option<Channel>,
     pub grpc_client_addr:Option<Addr<InnerGrpcClient>>,
     pub manage_addr:Option<WeakAddr<ConnManage>>,
+    pub config_request_client:Option<ConfigInnerRequestClient>,
+    pub naming_request_client:Option<InnerNamingRequestClient>,
 }
 
 impl InnerConn {
-    pub fn new(id:u32,host_info:HostInfo,support_grpc: bool,breaker_config: Arc<BreakerConfig>,auth_info:Option<AuthInfo>) -> Self {
+    pub fn new(id:u32,host_info:HostInfo,support_grpc: bool,breaker_config: Arc<BreakerConfig>
+        ,config_request_client:Option<ConfigInnerRequestClient>,naming_request_client:Option<InnerNamingRequestClient>) -> Self {
         Self {
             id,
             host_info,
             support_grpc,
-            auth_info,
             breaker: Breaker::new(Default::default(),breaker_config),
             channel:None,
             grpc_client_addr:None,
-            manage_addr:None
+            manage_addr:None,
+            config_request_client,
+            naming_request_client,
         }
     }
 

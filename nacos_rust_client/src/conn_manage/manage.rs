@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use actix::{prelude::*, WeakAddr};
 
-use crate::{client::{AuthInfo, HostInfo, naming_client::{NamingUtils, InnerNamingListener, NamingQueryCmd}, config_client::{inner::ConfigInnerCmd, model::NotifyConfigItem, ConfigInnerActor}, nacos_client::{ActixSystemCmd, ActixSystemResult}}, init_global_system_actor, ActorCreate};
+use crate::{client::{AuthInfo, HostInfo, naming_client::{NamingUtils, InnerNamingListener, NamingQueryCmd, InnerNamingRequestClient}, config_client::{inner::ConfigInnerCmd, model::NotifyConfigItem, ConfigInnerActor, inner_client::ConfigInnerRequestClient}, nacos_client::{ActixSystemCmd, ActixSystemResult}, auth::AuthActor, ServerEndpointInfo, get_md5}, init_global_system_actor, ActorCreate};
 
 use super::{inner_conn::InnerConn, breaker::BreakerConfig, conn_msg::{ConnCallbackMsg, ConfigResponse, ConfigRequest, NamingRequest, NamingResponse}, NotifyCallbackAddr};
 
@@ -26,7 +26,7 @@ impl ConnManage {
         let mut conns = Vec::with_capacity(hosts.len());
         let mut conn_map = HashMap::new();
         for host in hosts {
-            let conn = InnerConn::new(id,host,support_grpc,breaker_config.clone(),auth_info.clone());
+            let conn = InnerConn::new(id,host,support_grpc,breaker_config.clone(),None,None);
             conn_map.insert(id, id);
             id+=1;
             conns.push(conn);
@@ -42,11 +42,30 @@ impl ConnManage {
         }
     }
 
-    fn init_grpc_conn(&mut self,ctx: &mut Context<Self>) {
+    fn init_conn(&mut self,ctx: &mut Context<Self>) {
         self.current_index = self.select_index();
         let conn = self.conns.get_mut(self.current_index).unwrap();
-        let addr = ctx.address().downgrade();
-        conn.init_grpc(addr).ok();
+        if self.support_grpc {
+            let addr = ctx.address().downgrade();
+            conn.init_grpc(addr).ok();
+        }
+        else{
+            Self::init_http_request(conn,&self.auth_info);
+        }
+    }
+
+    fn init_http_request(conn: &mut InnerConn,auth_info:&Option<AuthInfo>) {
+        let endpoints = Arc::new(ServerEndpointInfo{hosts:vec![conn.host_info.clone()]});
+        let auth_actor = AuthActor::new(endpoints.clone(),auth_info.clone());
+        let auth_actor_addr = auth_actor.start();
+        //config http
+        let mut config_client = ConfigInnerRequestClient::new_with_endpoint(endpoints.clone());
+        config_client.set_auth_addr(auth_actor_addr.clone());
+        conn.config_request_client = Some(config_client);
+        //naming http
+        let mut naming_client = InnerNamingRequestClient::new_with_endpoint(endpoints);
+        naming_client.set_auth_addr(auth_actor_addr);
+        conn.naming_request_client = Some(naming_client);
     }
 
     pub fn start_at_global_system(self) -> Addr<Self> {
@@ -78,7 +97,7 @@ impl Actor for ConnManage {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         log::info!("ConnManage started");
-        self.init_grpc_conn(ctx);
+        self.init_conn(ctx);
     }
 }
 
@@ -144,13 +163,46 @@ impl Handler<ConfigRequest> for ConnManage {
     fn handle(&mut self, msg: ConfigRequest, ctx: &mut Self::Context) -> Self::Result {
         let conn = self.conns.get(self.current_index).unwrap();
         let conn_addr =conn.grpc_client_addr.clone();
+        let support_grpc = self.support_grpc;
+        let config_client = conn.config_request_client.clone();
         let fut=async move {
-            if let Some(conn_addr) = conn_addr {
-                let res:ConfigResponse= conn_addr.send(msg).await??;
-                Ok(res)
+            if support_grpc {
+                if let Some(conn_addr) = conn_addr {
+                    let res:ConfigResponse= conn_addr.send(msg).await??;
+                    Ok(res)
+                }
+                else{
+                    Err(anyhow::anyhow!("grpc conn is empty"))
+                }
             }
             else{
-                Err(anyhow::anyhow!("grpc conn is empty"))
+                if let Some(config_client) = config_client {
+                    match msg {
+                        ConfigRequest::GetConfig(config_key) => {
+                            let value=config_client.get_config(&config_key).await?;
+                            let md5 = get_md5(&value);
+                            Ok(ConfigResponse::ConfigValue(value, md5))
+                        },
+                        ConfigRequest::SetConfig(config_key, value) => {
+                            config_client.set_config(&config_key, &value).await?;
+                            Ok(ConfigResponse::None)
+                        },
+                        ConfigRequest::DeleteConfig(config_key) => {
+                            config_client.del_config(&config_key).await?;
+                            Ok(ConfigResponse::None)
+                        },
+                        ConfigRequest::V1Listen(content) => {
+                            let config_keys=config_client.listene(&content, None).await?;
+                            Ok(ConfigResponse::ChangeKeys(config_keys))
+                        },
+                        ConfigRequest::Listen(_, _) => {
+                            Err(anyhow::anyhow!("http not support"))
+                        },
+                    }
+                }
+                else{
+                    Err(anyhow::anyhow!("config client is empty"))
+                }
             }
         }.into_actor(self)
         .map(|r,_act,_ctx|{r});

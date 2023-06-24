@@ -134,7 +134,6 @@ impl ConfigInnerRequestClient {
     }
 
     pub async fn listene(&self,content:&str,timeout:Option<u64>) -> anyhow::Result<Vec<ConfigKey>> {
-        println!("====config listene");
         let mut param : HashMap<&str,&str> = HashMap::new();
         let timeout = timeout.unwrap_or(30000u64);
         let timeout_str = timeout.to_string();

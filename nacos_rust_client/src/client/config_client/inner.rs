@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use actix::{prelude::*, WeakAddr};
 
-use crate::{client::get_md5, conn_manage::{manage::{ConnManage, ConnManageCmd}, conn_msg::{ConfigRequest}}};
+use crate::{client::get_md5, conn_manage::{manage::{ConnManage, ConnManageCmd}, conn_msg::{ConfigRequest, ConfigResponse}}};
 
 use super::{config_key::ConfigKey, listener::{ConfigListener, ListenerValue}, inner_client::ConfigInnerRequestClient, model::NotifyConfigItem};
 
@@ -31,8 +31,7 @@ pub enum ConfigInnerHandleResult {
 }
 
 impl ConfigInnerActor{
-    pub(crate) fn new(request_client:ConfigInnerRequestClient,conn_manage:Option<WeakAddr<ConnManage>>) -> Self{
-        let use_grpc = conn_manage.is_some();
+    pub(crate) fn new(request_client:ConfigInnerRequestClient,use_grpc:bool,conn_manage:Option<WeakAddr<ConnManage>>) -> Self{
         Self { 
             request_client,
             subscribe_map: Default::default(),
@@ -52,24 +51,50 @@ impl ConfigInnerActor{
         }
     }
 
+    async fn send(conn_manage:&Addr<ConnManage>,request:ConfigRequest) -> anyhow::Result<ConfigResponse> {
+        match conn_manage.send(request).await{
+            Ok(res) => {
+                let res = res as anyhow::Result<ConfigResponse>;
+                res
+            }
+            _ => {
+                Err(anyhow::anyhow!("send msg to ConnManage failed"))
+            }
+        }
+    }
+
     fn listener(&mut self,ctx:&mut actix::Context<Self>) {
         if self.use_grpc {
             return;
         }
         if let Some(content) = self.get_listener_body(){
-            let request_client = self.request_client.clone();
-            //let endpoints = self.request_client.endpoints.clone();
+            let conn_manage = self.conn_manage.clone();
             async move{
                 let mut list =vec![];
-                match request_client.listene(&content, None).await{
-                    Ok(items) => {
-                        for key in items {
-                            if let Ok(value)=request_client.get_config(&key).await {
-                                list.push((key,value));
-                            }
+                if let Some(addr) = conn_manage {
+                    if let Some(addr) = addr.upgrade() {
+                        match Self::send(&addr, ConfigRequest::V1Listen(content.clone())).await{
+                            Ok(res) => match res {
+                                ConfigResponse::ChangeKeys(config_keys) => {
+                                    for key in config_keys {
+                                        match Self::send(&addr,ConfigRequest::GetConfig(key.clone())).await{
+                                            Ok(res) => {
+                                                match res {
+                                                    ConfigResponse::ConfigValue(value, _) => {
+                                                        list.push((key,value));
+                                                    },
+                                                    _ => {},
+                                                }
+                                            },
+                                            _ => {},
+                                        }
+                                    }
+                                },
+                                _ => {},
+                            },
+                            Err(_) => {},
                         }
-                    },
-                    Err(_) => {},
+                    }
                 }
                 list
             }
