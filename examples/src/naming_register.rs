@@ -24,7 +24,7 @@ async fn main(){
         .set_endpoint_addrs("127.0.0.1:8848,127.0.0.1:8848")
         .set_auth_info(auth_info)
         .set_tenant(namespace_id)
-        .set_use_grpc(false)
+        .set_use_grpc(true)
         .build_naming_client();
     let servcie_key = ServiceInstanceKey::new("foo","DEFAULT_GROUP");
     //可以通过监听器获取指定服务的最新实现列表，并支持触发变更回调函数,可用于适配微服务地址选择器。

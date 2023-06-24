@@ -4,7 +4,7 @@
 ## 介绍
 rust实现的nacos客户端。
 
-目前暂时只支持`1.x`版http协议，`2.x`服务兼容`1.x`协议。
+同时支持`1.x`版http协议和`2.x`版本协议，支持创建client时指定使用协议类型。
 
 1. 使用 actix + tokio 实现。
 2. 支持配置中心的推送、获取、监听。
@@ -29,8 +29,15 @@ nacos_rust_client = "0.2"
 
 ```rust
 use nacos_rust_client::client::config_client::ConfigClient;
+use nacos_rust_client::client::ClientBuilder;
 //...
-let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,auth_info);
+//let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,auth_info);
+let config_client = ClientBuilder::new()
+        .set_endpoint_addrs("127.0.0.1:8848,127.0.0.1:8848")
+        .set_auth_info(auth_info)
+        .set_tenant(tenant)
+        .set_use_grpc(true) //select communication protocol
+        .build_config_client();
 ```
 
 创建客户端,后会把客户端的一个引用加入到全局对象,可以通过 `get_last_config_client`获取.
@@ -74,8 +81,15 @@ let foo_obj_from_listener = foo_config_obj_listener.get_value().unwrap();
 
 ```rust
 use nacos_rust_client::client::naming_client::NamingClient;
+use nacos_rust_client::client::ClientBuilder;
 //...
-let naming_client = NamingClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",namespace_id,auth_info);
+//let naming_client = NamingClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",namespace_id,auth_info);
+let naming_client = ClientBuilder::new()
+        .set_endpoint_addrs("127.0.0.1:8848,127.0.0.1:8848")
+        .set_auth_info(auth_info)
+        .set_tenant(tenant)
+        .set_use_grpc(true) //select communication protocol
+        .build_naming_client();
 ```
 
 创建客户端,后会把客户端的一个引用加入到全局对象,可以通过 `get_last_naming_client`获取.
