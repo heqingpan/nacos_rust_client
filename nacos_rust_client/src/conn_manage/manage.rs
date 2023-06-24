@@ -5,7 +5,7 @@ use actix::{prelude::*, WeakAddr};
 
 use crate::{client::{AuthInfo, HostInfo, naming_client::{NamingUtils, InnerNamingListener, NamingQueryCmd, InnerNamingRequestClient}, config_client::{inner::ConfigInnerCmd, model::NotifyConfigItem, ConfigInnerActor, inner_client::ConfigInnerRequestClient}, nacos_client::{ActixSystemCmd, ActixSystemResult}, auth::AuthActor, ServerEndpointInfo, get_md5}, init_global_system_actor, ActorCreate};
 
-use super::{inner_conn::InnerConn, breaker::BreakerConfig, conn_msg::{ConnCallbackMsg, ConfigResponse, ConfigRequest, NamingRequest, NamingResponse}, NotifyCallbackAddr};
+use super::{inner_conn::InnerConn, breaker::BreakerConfig, conn_msg::{ConnCallbackMsg, ConfigResponse, ConfigRequest, NamingRequest, NamingResponse, ServiceResult}, NotifyCallbackAddr};
 
 #[derive(Default,Clone)]
 pub struct ConnManage {
@@ -214,16 +214,59 @@ impl Handler<ConfigRequest> for ConnManage {
 impl Handler<NamingRequest> for ConnManage {
     type Result = ResponseActFuture<Self, anyhow::Result<NamingResponse>>;
 
-    fn handle(&mut self, request: NamingRequest, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: NamingRequest, ctx: &mut Self::Context) -> Self::Result {
         let conn = self.conns.get(self.current_index).unwrap();
         let conn_addr =conn.grpc_client_addr.clone();
+        let support_grpc = self.support_grpc;
+        let naming_client = conn.naming_request_client.clone();
         let fut=async move {
-            if let Some(conn_addr) = conn_addr {
-                let res:NamingResponse= conn_addr.send(request).await??;
-                Ok(res)
+            if support_grpc {
+                if let Some(conn_addr) = conn_addr {
+                    let res:NamingResponse= conn_addr.send(msg).await??;
+                    Ok(res)
+                }
+                else{
+                    Err(anyhow::anyhow!("grpc conn is empty"))
+                }
             }
             else{
-                Err(anyhow::anyhow!("grpc conn is empty"))
+                if let Some(naming_client) = naming_client {
+                    match msg {
+                        NamingRequest::Register(instance) => {
+                            naming_client.register(&instance).await?;
+                            Ok(NamingResponse::None)
+                        },
+                        NamingRequest::Unregister(instance) => {
+                            naming_client.remove(&instance).await?;
+                            Ok(NamingResponse::None)
+                        },
+                        NamingRequest::BatchRegister(_) => {
+                            Err(anyhow::anyhow!("http not support"))
+                        },
+                        NamingRequest::Subscribe(_) => {
+                            Err(anyhow::anyhow!("http not support"))
+                        },
+                        NamingRequest::Unsubscribe(_) => {
+                            Err(anyhow::anyhow!("http not support"))
+                        },
+                        NamingRequest::QueryInstance(param) => {
+                            let result=naming_client.get_instance_list(&param).await?;
+                            let hosts = result.hosts.unwrap_or_default().into_iter().map(|e| Arc::new(e.to_instance())) .collect();
+                            let service_result = ServiceResult{
+                                hosts,
+                                cache_millis:result.cache_millis,
+                            };
+                            Ok(NamingResponse::ServiceResult(service_result))
+                        },
+                        NamingRequest::V1Heartbeat(heartbeat) => {
+                            naming_client.heartbeat(heartbeat).await?;
+                            Ok(NamingResponse::None)
+                        },
+                    }
+                }
+                else{
+                    Err(anyhow::anyhow!("naming client is empty"))
+                }
             }
         }.into_actor(self)
         .map(|r,_act,_ctx|{r});
