@@ -26,7 +26,7 @@ impl ConnManage {
         let mut conns = Vec::with_capacity(hosts.len());
         let mut conn_map = HashMap::new();
         for host in hosts {
-            let conn = InnerConn::new(id,host,support_grpc,breaker_config.clone(),None,None);
+            let conn = InnerConn::new(id,host,support_grpc,breaker_config.clone());
             conn_map.insert(id, id);
             id+=1;
             conns.push(conn);
@@ -61,11 +61,11 @@ impl ConnManage {
         //config http
         let mut config_client = ConfigInnerRequestClient::new_with_endpoint(endpoints.clone());
         config_client.set_auth_addr(auth_actor_addr.clone());
-        conn.config_request_client = Some(config_client);
+        conn.config_request_client = Some(Arc::new(config_client));
         //naming http
         let mut naming_client = InnerNamingRequestClient::new_with_endpoint(endpoints);
         naming_client.set_auth_addr(auth_actor_addr);
-        conn.naming_request_client = Some(naming_client);
+        conn.naming_request_client = Some(Arc::new(naming_client));
     }
 
     pub fn start_at_global_system(self) -> Addr<Self> {

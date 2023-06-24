@@ -17,7 +17,6 @@ use crate::client::naming_client::Instance;
 pub struct InnerNamingRegister{
     instances:HashMap<String,Instance>,
     timeout_set:TimeoutSet<String>,
-    request_client:InnerNamingRequestClient,
     conn_manage:Option<WeakAddr<ConnManage>>,
     period: u64,
     stop_remove_all:bool,
@@ -26,12 +25,10 @@ pub struct InnerNamingRegister{
 
 impl InnerNamingRegister {
 
-    pub fn new(request_client:InnerNamingRequestClient,conn_manage:Option<WeakAddr<ConnManage>>) -> Self{
-        let use_grpc = conn_manage.is_some();
+    pub fn new(use_grpc:bool,conn_manage:Option<WeakAddr<ConnManage>>) -> Self{
         Self{
             instances:Default::default(),
             timeout_set:Default::default(),
-            request_client,
             period: REGISTER_PERIOD,
             stop_remove_all:false,
             conn_manage,
@@ -54,23 +51,11 @@ impl InnerNamingRegister {
     }
 
     fn remove_instance(&self,instance:Instance,ctx:&mut actix::Context<Self>){
-        let use_grpc=self.use_grpc.to_owned();
-        if use_grpc {
-            if let Some(conn_manage) = &self.conn_manage {
-                if let Some(addr) = conn_manage.upgrade() {
-                    addr.do_send(NamingRequest::Unregister(instance.clone()));
-                }
+        if let Some(conn_manage) = &self.conn_manage {
+            if let Some(addr) = conn_manage.upgrade() {
+                addr.do_send(NamingRequest::Unregister(instance.clone()));
             }
-            return;
         }
-        let client = self.request_client.clone();
-        async move {
-            if !use_grpc {
-                client.remove(&instance).await.unwrap_or_default();
-            }
-            instance
-        }.into_actor(self)
-        .map(|_,_,_|{}).spawn(ctx);
     }
 
     fn remove_all_instance(&mut self,ctx:&mut actix::Context<Self>) {
@@ -79,19 +64,22 @@ impl InnerNamingRegister {
             self.remove_instance(instance,ctx);
         }
         self.instances = HashMap::new();
-        /*
-        let client = self.request_client.clone();
-        async move {
-            for (_,instance) in instances.iter() {
-                client.remove(&instance).await;
+    }
+
+    fn register_instance(&self,instance:Instance) {
+        if let Some(conn_manage) = &self.conn_manage {
+            if let Some(addr) = conn_manage.upgrade() {
+                addr.do_send(NamingRequest::Register(instance));
             }
-            ()
-        }.into_actor(self)
-        .map(|_,act,ctx|{
-            act.stop_remove_all=true;
-            ctx.stop();
-        }).spawn(ctx);
-        */
+        }
+    }
+
+    fn heartbeat_instance(&self,instance:&Instance) {
+        if let Some(conn_manage) = &self.conn_manage {
+            if let Some(addr) = conn_manage.upgrade() {
+                addr.do_send(NamingRequest::V1Heartbeat(instance.beat_string.clone().unwrap_or_default()));
+            }
+        }
     }
 }
 
@@ -135,29 +123,12 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                     return Ok(());
                 }
                 // request register
-                let client = self.request_client.clone();
-                let use_grpc=self.use_grpc.to_owned();
-                if use_grpc {
-                    if let Some(conn_manage) = &self.conn_manage {
-                        if let Some(addr) = conn_manage.upgrade() {
-                            addr.do_send(NamingRequest::Register(instance.clone()));
-                        }
-                    }
-                }
-                else{
+                self.register_instance(instance.clone());
+                self.instances.insert(key.clone(), instance);
+                if !self.use_grpc {
                     let time = now_millis();
-                    self.timeout_set.add(time+self.period,key.clone());
+                    self.timeout_set.add(time+self.period,key);
                 }
-                async move {
-                    if !use_grpc {
-                        client.register(&instance).await.unwrap_or_default();
-                    }
-                    instance
-                }.into_actor(self)
-                .map(|instance,act,_|{
-                    act.instances.insert(key, instance);
-                })
-                .spawn(ctx);
             },
             NamingRegisterCmd::Remove(instance) => {
                 let key = instance.generate_key();
@@ -169,18 +140,11 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
             },
             NamingRegisterCmd::Heartbeat(key,time) => {
                 if self.use_grpc {
+                    //不需要单独维持心跳
                     return Ok(());
                 }
                 if let Some(instance)=self.instances.get(&key) {
-                    // request heartbeat
-                    let client = self.request_client.clone();
-                    if let Some(beat_string) = &instance.beat_string {
-                        let beat_string = beat_string.clone();
-                        async move {
-                            client.heartbeat(beat_string).await.unwrap_or_default();
-                        }.into_actor(self)
-                        .map(|_,_,_|{}).spawn(ctx);
-                    }
+                    self.heartbeat_instance(&instance);
                     self.timeout_set.add(time+self.period, key);
                 }
             },

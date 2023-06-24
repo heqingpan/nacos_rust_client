@@ -98,7 +98,7 @@ impl InnerNamingRequestClient{
         let token_param = self.get_token().await;
         let url = format!("http://{}:{}/nacos/v1/ns/instance/beat?{}",&host.ip,&host.port,token_param);
         let resp=Utils::request(&self.client, "PUT", &url, beat_string.as_bytes().to_vec(), Some(&self.headers), Some(3000)).await?;
-        log::debug!("heartbeat:{}",resp.get_lossy_string_body());
+        //log::debug!("heartbeat:{}",resp.get_lossy_string_body());
         return Ok( "ok"==resp.get_string_body());
     }
 
@@ -113,7 +113,7 @@ impl InnerNamingRequestClient{
         let result:Result<QueryListResult,_>=serde_json::from_slice(&resp.body);
         match result {
             Ok(r) => {
-                log::debug!("get_instance_list instance:{}",&r.hosts.is_some());
+                //log::debug!("get_instance_list instance:{}",&r.hosts.is_some());
                 return Ok( r)
             },
             Err(e) => {

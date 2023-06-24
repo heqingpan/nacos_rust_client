@@ -18,13 +18,12 @@ pub(crate) struct InnerConn {
     pub channel: Option<Channel>,
     pub grpc_client_addr:Option<Addr<InnerGrpcClient>>,
     pub manage_addr:Option<WeakAddr<ConnManage>>,
-    pub config_request_client:Option<ConfigInnerRequestClient>,
-    pub naming_request_client:Option<InnerNamingRequestClient>,
+    pub config_request_client:Option<Arc<ConfigInnerRequestClient>>,
+    pub naming_request_client:Option<Arc<InnerNamingRequestClient>>,
 }
 
 impl InnerConn {
-    pub fn new(id:u32,host_info:HostInfo,support_grpc: bool,breaker_config: Arc<BreakerConfig>
-        ,config_request_client:Option<ConfigInnerRequestClient>,naming_request_client:Option<InnerNamingRequestClient>) -> Self {
+    pub fn new(id:u32,host_info:HostInfo,support_grpc: bool,breaker_config: Arc<BreakerConfig>) -> Self {
         Self {
             id,
             host_info,
@@ -33,8 +32,8 @@ impl InnerConn {
             channel:None,
             grpc_client_addr:None,
             manage_addr:None,
-            config_request_client,
-            naming_request_client,
+            config_request_client:None,
+            naming_request_client:None,
         }
     }
 

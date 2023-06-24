@@ -25,7 +25,7 @@ impl Drop for ConfigClient {
 
 impl ConfigClient {
     pub fn new(host:HostInfo,tenant:String) -> Arc<Self> {
-        let use_grpc=true;
+        let use_grpc=false;
         let request_client = ConfigInnerRequestClient::new(host.clone());
         let conn_manage=ConnManage::new(vec![host.clone()],use_grpc,None,Default::default());
         let conn_manage_addr = conn_manage.start_at_global_system();

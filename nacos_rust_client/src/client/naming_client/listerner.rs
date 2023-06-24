@@ -155,8 +155,8 @@ impl InnerNamingListener {
         request_client: InnerNamingRequestClient,
         udp_addr: Addr<UdpWorker>,
         conn_manage: Option<WeakAddr<ConnManage>>,
+        use_grpc:bool
     ) -> Self {
-        let use_grpc = conn_manage.is_some();
         Self {
             namespace_id: namespace_id.to_owned(),
             listeners: Default::default(),
@@ -177,15 +177,35 @@ impl InnerNamingListener {
             return;
         }
         let client = self.request_client.clone();
+        let conn_manage = self.conn_manage.clone();
         if let Some(instance_warp) = self.instances.get(&key) {
             let params = instance_warp.params.clone();
-            async move { (key, client.get_instance_list(&params).await) }
+            //Self::do_send_conn_msg(&self.conn_manage,NamingRequest::QueryInstance( Box::new(params.clone())));
+            async move { 
+                if let Some(conn_manage) = conn_manage {
+                    if let Some(conn_manage) = conn_manage.upgrade() {
+                        match conn_manage.send(NamingRequest::QueryInstance( Box::new(params.clone()))).await{
+                            Ok(res)=> match res as anyhow::Result<NamingResponse> {
+                                Ok(res) => match res {
+                                    NamingResponse::ServiceResult(service_result) => {
+                                        return (key,Ok(service_result));
+                                    },
+                                    NamingResponse::None => {},
+                                },
+                                _ => {},
+                            }
+                            Err(err) => {
+                            }
+                        }
+                    }
+                }
+                (key, Err(anyhow::anyhow!("query instance error")))
+            }
                 .into_actor(self)
                 .map(|(key, res), act, _| {
                     match res {
                         Ok(result) => {
-                            act.update_instances_and_notify(key, result)
-                                .unwrap_or_default();
+                            act.update_instances_and_notify_by_service_result(key,result).ok();
                         }
                         Err(e) => {
                             log::error!("get_instance_list error:{}", e);
@@ -369,14 +389,12 @@ impl Actor for InnerNamingListener {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         log::info!(" InnerNamingListener started");
-        if self.use_grpc {
-            if let Some(addr) = &self.conn_manage {
-                if let Some(addr) = addr.upgrade() {
-                    addr.do_send(ConnManageCmd::NamingListenerActorAddr(ctx.address().downgrade()));
-                }
+        if let Some(addr) = &self.conn_manage {
+            if let Some(addr) = addr.upgrade() {
+                addr.do_send(ConnManageCmd::NamingListenerActorAddr(ctx.address().downgrade()));
             }
         }
-        else {
+        if !self.use_grpc {
             self.init_udp_info(ctx);
             self.hb(ctx);
         }
