@@ -4,6 +4,7 @@ use std::sync::Arc;
 pub mod nacos_client;
 pub mod config_client;
 pub mod naming_client;
+pub mod builder;
 
 pub mod utils;
 
@@ -15,6 +16,7 @@ use serde::{Serialize, Deserialize};
 pub use self::nacos_client::NacosClient;
 pub use self::config_client::ConfigClient;
 pub use self::naming_client::NamingClient;
+pub use self::builder::ClientBuilder;
 
 #[derive(Debug, Clone,Default)]
 pub struct HostInfo {
@@ -103,7 +105,7 @@ pub struct TokenInfo {
     pub token_ttl:u64,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,Default)]
 pub struct ServerEndpointInfo {
     pub hosts:Vec<HostInfo>,
 }

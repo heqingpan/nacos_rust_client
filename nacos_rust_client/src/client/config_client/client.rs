@@ -9,10 +9,10 @@ use super::{ config_key::ConfigKey, listener::{ConfigListener}, inner::{ConfigIn
 
 
 pub struct ConfigClient{
-    tenant:String,
-    request_client:ConfigInnerRequestClient,
-    config_inner_addr: Addr<ConfigInnerActor> ,
-    conn_manage_addr: Addr<ConnManage>,
+    pub(crate) tenant:String,
+    pub(crate) request_client:ConfigInnerRequestClient,
+    pub(crate) config_inner_addr: Addr<ConfigInnerActor> ,
+    pub(crate) conn_manage_addr: Addr<ConnManage>,
 }
 
 impl Drop for ConfigClient {
@@ -61,7 +61,7 @@ impl ConfigClient {
         r
     }
 
-    fn init_register(mut request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>,conn_manage_addr:Option<WeakAddr<ConnManage>>,use_grpc:bool) -> (Addr<ConfigInnerActor>,Addr<AuthActor>){
+    pub(crate) fn init_register(mut request_client:ConfigInnerRequestClient,auth_info:Option<AuthInfo>,conn_manage_addr:Option<WeakAddr<ConnManage>>,use_grpc:bool) -> (Addr<ConfigInnerActor>,Addr<AuthActor>){
         let system_addr =  init_global_system_actor();
         let endpoint=request_client.endpoints.clone();
         let actor = AuthActor::new(endpoint,auth_info);

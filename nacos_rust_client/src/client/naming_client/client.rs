@@ -27,7 +27,7 @@ pub struct NamingClient{
     pub namespace_id:String,
     pub(crate) register:Addr<InnerNamingRegister>,
     pub(crate) listener_addr:Addr<InnerNamingListener>,
-    _conn_manage_addr: Addr<ConnManage>,
+    pub(crate) _conn_manage_addr: Addr<ConnManage>,
     pub current_ip:String,
 }
 
@@ -92,7 +92,7 @@ impl NamingClient {
         r
     }
 
-    fn init_register(namespace_id:String,client_ip:String,mut request_client:InnerNamingRequestClient,auth_info:Option<AuthInfo>,conn_manage_addr:Option<WeakAddr<ConnManage>>,use_grpc:bool) 
+    pub(crate) fn init_register(namespace_id:String,client_ip:String,mut request_client:InnerNamingRequestClient,auth_info:Option<AuthInfo>,conn_manage_addr:Option<WeakAddr<ConnManage>>,use_grpc:bool) 
         -> (Addr<InnerNamingRegister>,Addr<InnerNamingListener>) {
         let system_addr =  init_global_system_actor();
         let endpoint=request_client.endpoints.clone();

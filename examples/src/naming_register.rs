@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use std::time::Duration;
 
-use nacos_rust_client::client::{ HostInfo, AuthInfo };
+use nacos_rust_client::client::{ HostInfo, AuthInfo, ClientBuilder };
 use nacos_rust_client::client::{naming_client::{NamingClient, Instance,QueryInstanceListParams}};
 
 
@@ -19,7 +19,13 @@ async fn main(){
     let namespace_id = "public".to_owned(); //default teant
     //let auth_info = Some(AuthInfo::new("nacos","nacos"));
     let auth_info = None;
-    let client = NamingClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848", namespace_id, auth_info);
+    //let client = NamingClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848", namespace_id, auth_info);
+    let client = ClientBuilder::new()
+        .set_endpoint_addrs("127.0.0.1:8848,127.0.0.1:8848")
+        .set_auth_info(auth_info)
+        .set_tenant(namespace_id)
+        .set_use_grpc(false)
+        .build_naming_client();
     let servcie_key = ServiceInstanceKey::new("foo","DEFAULT_GROUP");
     //可以通过监听器获取指定服务的最新实现列表，并支持触发变更回调函数,可用于适配微服务地址选择器。
     let default_listener = InstanceDefaultListener::new(servcie_key,Some(Arc::new(

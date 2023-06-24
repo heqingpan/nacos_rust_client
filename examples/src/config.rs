@@ -2,7 +2,7 @@
 use std::time::Duration;
 use std::sync::Arc;
 
-use nacos_rust_client::client::{ HostInfo, AuthInfo };
+use nacos_rust_client::client::{ HostInfo, AuthInfo, ClientBuilder };
 use nacos_rust_client::client::config_client::{
     ConfigClient,ConfigKey,ConfigDefaultListener
 };
@@ -24,7 +24,13 @@ async fn main() {
     let tenant = "public".to_owned(); //default teant
     //let auth_info = Some(AuthInfo::new("nacos","nacos"));
     let auth_info = None;
-    let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,auth_info);
+    //let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,auth_info);
+    let config_client = ClientBuilder::new()
+        .set_endpoint_addrs("127.0.0.1:8848,127.0.0.1:8848")
+        .set_auth_info(auth_info)
+        .set_tenant(tenant)
+        .set_use_grpc(true)
+        .build_config_client();
     tokio::time::sleep(Duration::from_millis(1000)).await;
 
     let key = ConfigKey::new("001","foo","");
@@ -70,9 +76,10 @@ async fn check_listener_value(){
         let foo_obj_string_from_listener = foo_config_string_listener.get_value().unwrap();
         // 监听项的内容有变更后会被服务端推送,监听项会自动更新为最新的配置
         println!("foo_obj_from_listener :{}",&foo_obj_string_from_listener);
-        //assert_eq!(foo_obj_string_from_listener.to_string(),foo_json_string);
-        //assert_eq!(foo_obj_from_listener.number,foo_obj.number);
-        //assert_eq!(foo_obj_from_listener.number,i);
+        assert_eq!(foo_obj_string_from_listener.to_string(),foo_json_string);
+        assert_eq!(foo_obj_from_listener.number,foo_obj.number);
+        assert_eq!(foo_obj_from_listener.number,i);
     }
+
     tokio::signal::ctrl_c().await.expect("failed to listen for event");
 }
