@@ -66,6 +66,7 @@ impl HostInfo {
             if let Some(p) = ports.get(0) {
                 let pstr = (*p).to_owned();
                 port=pstr.parse::<u32>().unwrap_or(8848u32);
+                grpc_port = port+1000;
             }
             if let Some(p) = ports.get(1) {
                 let pstr = (*p).to_owned();
