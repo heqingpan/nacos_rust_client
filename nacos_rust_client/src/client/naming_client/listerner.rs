@@ -61,12 +61,12 @@ impl InstanceListener for InstanceDefaultListener {
     fn change(&self,key:&ServiceInstanceKey,value:&Vec<Arc<Instance>>,add:&Vec<Arc<Instance>>,remove:&Vec<Arc<Instance>>) -> () {
         log::debug!("InstanceDefaultListener change,key{:?},valid count:{},add count:{},remove count:{}",key,value.len(),add.len(),remove.len());
         let content = self.content.clone();
-        if value.len() > 0 {
-            Self::set_value(content, value.clone());
-            if let Some(callback) = &self.callback {
-                callback(self.get_content(),add.clone(),remove.clone());
-            }
+        //if value.len() > 0 {
+        Self::set_value(content, value.clone());
+        if let Some(callback) = &self.callback {
+            callback(self.get_content(),add.clone(),remove.clone());
         }
+        //}
     }
 }
 
@@ -153,16 +153,18 @@ impl InnerNamingListener {
             let checksum = result.checksum.unwrap_or("".to_owned());
             if instance_warp.last_sign != checksum || instance_warp.last_sign.len()==0 {
                 instance_warp.last_sign = checksum;
+                for e in &instance_warp.instances {
+                    old_instance_map.insert(format!("{}:{}",e.ip,e.port), e.clone());
+                }
                 if let Some(hosts) = result.hosts {
-                    for e in &instance_warp.instances {
-                        old_instance_map.insert(format!("{}:{}",e.ip,e.port), e.clone());
-                    }
                     instance_warp.instances = hosts.into_iter()
                         .map(|e| Arc::new(e.to_instance()))
                         .filter(|e|e.weight>0.001f32)
                         .collect();
-                    is_notify=true;
+                } else {
+                    instance_warp.instances = vec![];
                 }
+                is_notify=true;
             }
             let current_time = now_millis();
             instance_warp.next_time = current_time+self.period;
