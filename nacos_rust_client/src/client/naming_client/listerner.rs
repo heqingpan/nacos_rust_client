@@ -61,12 +61,12 @@ impl InstanceListener for InstanceDefaultListener {
     fn change(&self,key:&ServiceInstanceKey,value:&Vec<Arc<Instance>>,add:&Vec<Arc<Instance>>,remove:&Vec<Arc<Instance>>) -> () {
         log::debug!("InstanceDefaultListener change,key{:?},valid count:{},add count:{},remove count:{}",key,value.len(),add.len(),remove.len());
         let content = self.content.clone();
-        if value.len() > 0 {
-            Self::set_value(content, value.clone());
-            if let Some(callback) = &self.callback {
-                callback(self.get_content(),add.clone(),remove.clone());
-            }
+        //if value.len() > 0 {
+        Self::set_value(content, value.clone());
+        if let Some(callback) = &self.callback {
+            callback(self.get_content(),add.clone(),remove.clone());
         }
+        //}
     }
 }
 
