@@ -162,7 +162,7 @@ impl InnerNamingListener {
                         .filter(|e|e.weight>0.001f32)
                         .collect();
                 } else {
-                    instance_warp.instances = [];
+                    instance_warp.instances = vec![];
                 }
                 is_notify=true;
             }
