@@ -179,6 +179,9 @@ impl InnerNamingListener {
                     }
                 }
                 let remove_list:Vec<Arc<Instance>> = old_instance_map.into_iter().map(|(_,v)| {v}).collect();
+                log::info!("instances: {:?}", instance_warp.instances);
+                log::info!("add_list: {:?}", add_list);
+                log::info!("remove_list: {:?}", remove_list);
                 self.notify_listener(key, &instance_warp.instances,add_list,remove_list);
             }
         }
