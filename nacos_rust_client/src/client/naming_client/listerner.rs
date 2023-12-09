@@ -104,12 +104,12 @@ impl InstanceListener for InstanceDefaultListener {
             remove.len()
         );
         let content = self.content.clone();
-        if value.len() > 0 {
-            Self::set_value(content, value.clone());
-            if let Some(callback) = &self.callback {
-                callback(self.get_content(), add.clone(), remove.clone());
-            }
+        //if value.len() > 0 {
+        Self::set_value(content, value.clone());
+        if let Some(callback) = &self.callback {
+            callback(self.get_content(),add.clone(),remove.clone());
         }
+        //}
     }
 }
 
@@ -127,9 +127,10 @@ impl ListenerValue {
 #[derive(Debug, Default, Clone)]
 struct InstancesWrap {
     instances: Vec<Arc<Instance>>,
-    params: QueryInstanceListParams,
-    last_sign: String,
-    next_time: u64,
+    params:QueryInstanceListParams,
+    //last_sign:String,
+    next_time:u64,
+    //empty_times:u8,
 }
 
 pub struct InnerNamingListener {
@@ -194,7 +195,7 @@ impl InnerNamingListener {
                                 },
                                 _ => {},
                             }
-                            Err(err) => {
+                            Err(_err) => {
                             }
                         }
                     }
@@ -228,7 +229,7 @@ impl InnerNamingListener {
         let mut old_instance_map = HashMap::new();
         if let Some(instance_warp) = self.instances.get_mut(&key) {
             for e in &instance_warp.instances {
-                old_instance_map.insert(format!("{}:{}", e.ip, e.port), e.clone());
+                old_instance_map.insert(format!("{}:{}",e.ip,e.port), e.clone());
             }
             instance_warp.instances = result
                 .hosts
