@@ -91,6 +91,7 @@ struct InstancesWrap{
     params:QueryInstanceListParams,
     last_sign:String,
     next_time:u64,
+    empty_times:u8,
 }
 
 
@@ -161,10 +162,17 @@ impl InnerNamingListener {
                         .map(|e| Arc::new(e.to_instance()))
                         .filter(|e|e.weight>0.001f32)
                         .collect();
+                    instance_warp.empty_times=0u8;
+                    is_notify=true;
                 } else {
-                    instance_warp.instances = vec![];
+                    instance_warp.empty_times+=1;
+                    //连续2次取到空列表后才把实例列表设置为空，避免nacos服务集群抖动时取到结果不准确
+                    if instance_warp.empty_times >= 2u8 {
+                        instance_warp.empty_times=0u8;
+                        instance_warp.instances = vec![];
+                        is_notify=true;
+                    }
                 }
-                is_notify=true;
             }
             let current_time = now_millis();
             instance_warp.next_time = current_time+self.period;
