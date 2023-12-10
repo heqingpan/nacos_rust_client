@@ -12,7 +12,7 @@ use super::{
         ConfigListenContext, ConfigPublishRequest, ConfigQueryRequest, ConfigQueryResponse,
         ConfigRemoveRequest,
     },
-    nacos_proto::request_client::RequestClient,
+    do_timeout_request,
     utils::PayloadUtils,
 };
 
@@ -32,9 +32,7 @@ impl GrpcConfigRequestUtils {
         };
         let val = serde_json::to_string(&request).unwrap();
         let payload = PayloadUtils::build_payload("ConfigQueryRequest", val);
-        let mut request_client = RequestClient::new(channel);
-        let response = request_client.request(tonic::Request::new(payload)).await?;
-        let payload = response.into_inner();
+        let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("check_register,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
@@ -61,9 +59,7 @@ impl GrpcConfigRequestUtils {
         };
         let val = serde_json::to_string(&request).unwrap();
         let payload = PayloadUtils::build_payload("ConfigQueryRequest", val);
-        let mut request_client = RequestClient::new(channel);
-        let response = request_client.request(tonic::Request::new(payload)).await?;
-        let payload = response.into_inner();
+        let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("config_query,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
@@ -96,9 +92,7 @@ impl GrpcConfigRequestUtils {
         };
         let val = serde_json::to_string(&request).unwrap();
         let payload = PayloadUtils::build_payload("ConfigPublishRequest", val);
-        let mut request_client = RequestClient::new(channel);
-        let response = request_client.request(tonic::Request::new(payload)).await?;
-        let payload = response.into_inner();
+        let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("config_publish,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
@@ -128,9 +122,7 @@ impl GrpcConfigRequestUtils {
         };
         let val = serde_json::to_string(&request).unwrap();
         let payload = PayloadUtils::build_payload("ConfigRemoveRequest", val);
-        let mut request_client = RequestClient::new(channel);
-        let response = request_client.request(tonic::Request::new(payload)).await?;
-        let payload = response.into_inner();
+        let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("config_remove,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
@@ -170,9 +162,7 @@ impl GrpcConfigRequestUtils {
         };
         let val = serde_json::to_string(&request).unwrap();
         let payload = PayloadUtils::build_payload("ConfigBatchListenRequest", val);
-        let mut request_client = RequestClient::new(channel);
-        let response = request_client.request(tonic::Request::new(payload)).await?;
-        let payload = response.into_inner();
+        let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("config_change_batch_listen,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;

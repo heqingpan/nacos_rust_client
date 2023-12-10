@@ -128,6 +128,7 @@ impl ConnManage {
 
     fn reconnect(&mut self, old_index: usize, ctx: &mut Context<Self>) {
         if self.current_index != old_index {
+            log::warn!("ConnManage reconnect,ignore repeated");
             //已经重链过
             return;
         }
@@ -136,6 +137,7 @@ impl ConnManage {
             self.init_conn(ctx);
         } else {
             if let Some(conn) = self.conns.get_mut(old_index) {
+                conn.close_grpc().ok();
                 conn.weight = 0;
             }
             self.init_conn(ctx);

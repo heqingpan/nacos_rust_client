@@ -13,7 +13,7 @@ use super::{
         BaseResponse, BatchInstanceRequest, Instance as ApiInstance, ServiceQueryRequest,
         ServiceQueryResponse, SubscribeServiceRequest, SubscribeServiceResponse,
     },
-    nacos_proto::request_client::RequestClient,
+    do_timeout_request,
     utils::PayloadUtils,
 };
 
@@ -84,9 +84,7 @@ impl GrpcNamingRequestUtils {
         let payload = PayloadUtils::build_payload("InstanceRequest", val);
         //debug
         //log::info!("instance_register request,{}",&PayloadUtils::get_payload_string(&payload));
-        let mut request_client = RequestClient::new(channel);
-        let response = request_client.request(tonic::Request::new(payload)).await?;
-        let payload = response.into_inner();
+        let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("instance_register,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
@@ -125,9 +123,7 @@ impl GrpcNamingRequestUtils {
 
         let val = serde_json::to_string(&request).unwrap();
         let payload = PayloadUtils::build_payload("BatchInstanceRequest", val);
-        let mut request_client = RequestClient::new(channel);
-        let response = request_client.request(tonic::Request::new(payload)).await?;
-        let payload = response.into_inner();
+        let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("batch_register,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
@@ -160,9 +156,7 @@ impl GrpcNamingRequestUtils {
         };
         let val = serde_json::to_string(&request).unwrap();
         let payload = PayloadUtils::build_payload("SubscribeServiceRequest", val);
-        let mut request_client = RequestClient::new(channel);
-        let response = request_client.request(tonic::Request::new(payload)).await?;
-        let payload = response.into_inner();
+        let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("subscribe,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
@@ -208,9 +202,7 @@ impl GrpcNamingRequestUtils {
         };
         let val = serde_json::to_string(&request).unwrap();
         let payload = PayloadUtils::build_payload("ServiceQueryRequest", val);
-        let mut request_client = RequestClient::new(channel);
-        let response = request_client.request(tonic::Request::new(payload)).await?;
-        let payload = response.into_inner();
+        let payload = do_timeout_request(channel, payload).await?;
         //log::info!("query_service,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;
         let res: ServiceQueryResponse = serde_json::from_slice(&body_vec)?;

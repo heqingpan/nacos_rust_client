@@ -335,6 +335,7 @@ impl InnerGrpcClient {
             if !r {
                 ctx.error_time += 1;
                 if ctx.error_time > 1 {
+                    log::warn!("GrpcRequestCheckError");
                     if let Some(manage_conn) = ctx.manage_addr.upgrade() {
                         manage_conn.do_send(ConnManageCmd::GrpcRequestCheckError { id: ctx.id });
                     }
