@@ -107,7 +107,7 @@ impl InstanceListener for InstanceDefaultListener {
         //if value.len() > 0 {
         Self::set_value(content, value.clone());
         if let Some(callback) = &self.callback {
-            callback(self.get_content(),add.clone(),remove.clone());
+            callback(self.get_content(), add.clone(), remove.clone());
         }
         //}
     }
@@ -127,9 +127,9 @@ impl ListenerValue {
 #[derive(Debug, Default, Clone)]
 struct InstancesWrap {
     instances: Vec<Arc<Instance>>,
-    params:QueryInstanceListParams,
+    params: QueryInstanceListParams,
     //last_sign:String,
-    next_time:u64,
+    next_time: u64,
     //empty_times:u8,
 }
 
@@ -156,7 +156,7 @@ impl InnerNamingListener {
         request_client: InnerNamingRequestClient,
         udp_addr: Addr<UdpWorker>,
         conn_manage: Option<WeakAddr<ConnManage>>,
-        use_grpc:bool
+        use_grpc: bool,
     ) -> Self {
         Self {
             namespace_id: namespace_id.to_owned(),
@@ -177,43 +177,46 @@ impl InnerNamingListener {
         if self.use_grpc {
             return;
         }
-        let client = self.request_client.clone();
+        //let client = self.request_client.clone();
         let conn_manage = self.conn_manage.clone();
         if let Some(instance_warp) = self.instances.get(&key) {
             let params = instance_warp.params.clone();
             //Self::do_send_conn_msg(&self.conn_manage,NamingRequest::QueryInstance( Box::new(params.clone())));
-            async move { 
+            async move {
                 if let Some(conn_manage) = conn_manage {
                     if let Some(conn_manage) = conn_manage.upgrade() {
-                        match conn_manage.send(NamingRequest::QueryInstance( Box::new(params.clone()))).await{
-                            Ok(res)=> match res as anyhow::Result<NamingResponse> {
+                        match conn_manage
+                            .send(NamingRequest::QueryInstance(Box::new(params.clone())))
+                            .await
+                        {
+                            Ok(res) => match res as anyhow::Result<NamingResponse> {
                                 Ok(res) => match res {
                                     NamingResponse::ServiceResult(service_result) => {
-                                        return (key,Ok(service_result));
-                                    },
-                                    NamingResponse::None => {},
+                                        return (key, Ok(service_result));
+                                    }
+                                    NamingResponse::None => {}
                                 },
-                                _ => {},
-                            }
-                            Err(_err) => {
-                            }
+                                _ => {}
+                            },
+                            Err(_err) => {}
                         }
                     }
                 }
                 (key, Err(anyhow::anyhow!("query instance error")))
             }
-                .into_actor(self)
-                .map(|(key, res), act, _| {
-                    match res {
-                        Ok(result) => {
-                            act.update_instances_and_notify_by_service_result(key,result).ok();
-                        }
-                        Err(e) => {
-                            log::error!("get_instance_list error:{}", e);
-                        }
-                    };
-                })
-                .spawn(ctx);
+            .into_actor(self)
+            .map(|(key, res), act, _| {
+                match res {
+                    Ok(result) => {
+                        act.update_instances_and_notify_by_service_result(key, result)
+                            .ok();
+                    }
+                    Err(e) => {
+                        log::error!("get_instance_list error:{}", e);
+                    }
+                };
+            })
+            .spawn(ctx);
         }
     }
 
@@ -229,7 +232,7 @@ impl InnerNamingListener {
         let mut old_instance_map = HashMap::new();
         if let Some(instance_warp) = self.instances.get_mut(&key) {
             for e in &instance_warp.instances {
-                old_instance_map.insert(format!("{}:{}",e.ip,e.port), e.clone());
+                old_instance_map.insert(format!("{}:{}", e.ip, e.port), e.clone());
             }
             instance_warp.instances = result
                 .hosts
@@ -292,10 +295,7 @@ impl InnerNamingListener {
         Ok(NamingResponse::None)
     }
 
-    fn do_send_conn_msg(
-        conn_manage: &Option<WeakAddr<ConnManage>>,
-        request: NamingRequest,
-    ) {
+    fn do_send_conn_msg(conn_manage: &Option<WeakAddr<ConnManage>>, request: NamingRequest) {
         if let Some(conn_manage) = conn_manage {
             if let Some(conn_manage) = conn_manage.upgrade() {
                 conn_manage.do_send(request);
@@ -392,7 +392,9 @@ impl Actor for InnerNamingListener {
         log::info!(" InnerNamingListener started");
         if let Some(addr) = &self.conn_manage {
             if let Some(addr) = addr.upgrade() {
-                addr.do_send(ConnManageCmd::NamingListenerActorAddr(ctx.address().downgrade()));
+                addr.do_send(ConnManageCmd::NamingListenerActorAddr(
+                    ctx.address().downgrade(),
+                ));
             }
         }
         if !self.use_grpc {
@@ -462,9 +464,8 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                     self.instances.insert(key_str.clone(), instances);
                     if self.use_grpc {
                         let request = NamingRequest::Subscribe(vec![clone_key]);
-                        Self::do_send_conn_msg(&self.conn_manage , request)
-                    }
-                    else{
+                        Self::do_send_conn_msg(&self.conn_manage, request)
+                    } else {
                         let addr = ctx.address();
                         addr.do_send(NamingListenerCmd::Heartbeat(key_str, current_time));
                     }
@@ -472,7 +473,7 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
             }
             NamingListenerCmd::Remove(key, id) => {
                 let key_str = key.get_key();
-                let mut is_empty=false;
+                let mut is_empty = false;
                 if let Some(list) = self.listeners.get_mut(&key_str) {
                     let mut indexs = Vec::new();
                     for i in 0..list.len() {
@@ -485,12 +486,12 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                     for i in indexs.iter().rev() {
                         list.remove(*i);
                     }
-                    is_empty = list.len()==0;
+                    is_empty = list.len() == 0;
                 }
                 if is_empty {
                     self.listeners.remove(&key_str);
                     let request = NamingRequest::Unsubscribe(vec![key]);
-                    Self::do_send_conn_msg(&self.conn_manage , request)
+                    Self::do_send_conn_msg(&self.conn_manage, request)
                 }
             }
             NamingListenerCmd::Heartbeat(key, time) => {
@@ -571,7 +572,7 @@ type ListenerSenderType = tokio::sync::oneshot::Sender<NamingQueryResult>;
 pub enum NamingQueryCmd {
     QueryList(QueryInstanceListParams, ListenerSenderType),
     Select(QueryInstanceListParams, ListenerSenderType),
-    ChangeResult(ServiceInstanceKey ,ServiceResult),
+    ChangeResult(ServiceInstanceKey, ServiceResult),
 }
 
 pub enum NamingQueryResult {
@@ -692,8 +693,9 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
             NamingQueryCmd::ChangeResult(service_key, service_result) => {
                 let key = service_key.get_key();
                 //println!("naming listener ChangeResult, {}",&key);
-                self.update_instances_and_notify_by_service_result( key, service_result).ok();
-            },
+                self.update_instances_and_notify_by_service_result(key, service_result)
+                    .ok();
+            }
         }
         Ok(NamingQueryResult::None)
     }

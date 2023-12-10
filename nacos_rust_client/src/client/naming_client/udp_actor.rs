@@ -1,7 +1,7 @@
-use std::time::Duration;
 use actix::prelude::*;
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::UdpSocket;
 
 use super::InnerNamingListener;
@@ -11,28 +11,28 @@ pub struct UdpWorker {
     local_addr_str: Option<String>,
     socket: Option<Arc<UdpSocket>>,
     addr: Option<Addr<InnerNamingListener>>,
-    udp_port:u16,
+    udp_port: u16,
     buf: Option<Vec<u8>>,
 }
 
 impl UdpWorker {
-    pub fn new(addr: Option<Addr<InnerNamingListener>>) -> Self{
-        Self{
+    pub fn new(addr: Option<Addr<InnerNamingListener>>) -> Self {
+        Self {
             local_addr_str: None,
             socket: None,
             addr,
-            udp_port:0,
+            udp_port: 0,
             buf: Some(vec![]),
         }
     }
 
     pub fn new_with_socket(socket: UdpSocket, addr: Option<Addr<InnerNamingListener>>) -> Self {
         let local_addr = socket.local_addr().unwrap();
-        let udp_port=local_addr.port();
+        let udp_port = local_addr.port();
         Self {
             local_addr_str: None,
             socket: Some(Arc::new(socket)),
-            addr:addr,
+            addr: addr,
             udp_port,
             buf: Some(vec![]),
         }
@@ -58,7 +58,7 @@ impl UdpWorker {
             .map(|r, act, ctx| {
                 act.udp_port = r.local_addr().unwrap().port();
                 if let Some(_addr) = &act.addr {
-                    _addr.do_send(InitLocalAddr{port:act.udp_port});
+                    _addr.do_send(InitLocalAddr { port: act.udp_port });
                 }
                 act.socket = Some(Arc::new(r));
                 act.init_loop_recv(ctx);
@@ -72,8 +72,8 @@ impl UdpWorker {
         let buf = self.buf.replace(Vec::new());
         async move {
             let mut buf = buf.unwrap_or_default();
-            if buf.len()< MAX_DATAGRAM_SIZE {
-                buf =  vec![0u8; MAX_DATAGRAM_SIZE];
+            if buf.len() < MAX_DATAGRAM_SIZE {
+                buf = vec![0u8; MAX_DATAGRAM_SIZE];
             }
             //let mut buf = buf.unwrap_or_else(|| vec![0u8; MAX_DATAGRAM_SIZE]);
             //buf=vec![0u8;MAX_DATAGRAM_SIZE];
@@ -88,7 +88,7 @@ impl UdpWorker {
                     };
                     //let s=String::from_utf8_lossy(&buf[..len]);
                     //println!("rece from:{} | len:{} | str:{}",&addr,len,s);
-                    if let Some(_notify_addr)=notify_addr {
+                    if let Some(_notify_addr) = notify_addr {
                         _notify_addr.do_send(msg);
                     }
                 }
@@ -99,7 +99,7 @@ impl UdpWorker {
         .into_actor(self)
         .map(|buf, act, ctx| {
             act.buf.replace(buf);
-            ctx.run_later(Duration::new(1,0), |act,ctx|{
+            ctx.run_later(Duration::new(1, 0), |act, ctx| {
                 act.init_loop_recv(ctx);
             });
         })
@@ -125,8 +125,8 @@ pub struct UdpDataCmd {
 
 #[derive(Debug, Message)]
 #[rtype(result = "Result<(),std::io::Error>")]
-pub struct InitLocalAddr{
-    pub port:u16,
+pub struct InitLocalAddr {
+    pub port: u16,
 }
 
 impl UdpDataCmd {
@@ -143,7 +143,10 @@ impl Handler<UdpDataCmd> for UdpWorker {
     fn handle(&mut self, msg: UdpDataCmd, ctx: &mut Context<Self>) -> Self::Result {
         let socket = self.socket.as_ref().unwrap().clone();
         async move {
-            socket.send_to(&msg.data, msg.target_addr).await.unwrap_or_default();
+            socket
+                .send_to(&msg.data, msg.target_addr)
+                .await
+                .unwrap_or_default();
         }
         .into_actor(self)
         .map(|_, _, _| {})
@@ -166,25 +169,27 @@ pub enum UdpWorkerResult {
 }
 
 impl Handler<UdpWorkerCmd> for UdpWorker {
-    type Result=Result<UdpWorkerResult,std::io::Error>;
+    type Result = Result<UdpWorkerResult, std::io::Error>;
 
     fn handle(&mut self, msg: UdpWorkerCmd, ctx: &mut Self::Context) -> Self::Result {
         match msg {
             UdpWorkerCmd::QueryUdpPort => {
-                if let Some(_addr) = &self.addr{
-                    _addr.do_send(InitLocalAddr{port:self.udp_port});
+                if let Some(_addr) = &self.addr {
+                    _addr.do_send(InitLocalAddr {
+                        port: self.udp_port,
+                    });
                 }
-                return Ok(UdpWorkerResult::UdpPort(self.udp_port))
-            },
+                return Ok(UdpWorkerResult::UdpPort(self.udp_port));
+            }
             UdpWorkerCmd::Close => {
                 log::info!("UdpWorker close");
-                self.addr=None;
-                self.socket=None;
+                self.addr = None;
+                self.socket = None;
                 ctx.stop();
-            },
+            }
             UdpWorkerCmd::SetListenerAddr(addr) => {
                 self.addr = Some(addr);
-            },
+            }
         };
         Ok(UdpWorkerResult::None)
     }

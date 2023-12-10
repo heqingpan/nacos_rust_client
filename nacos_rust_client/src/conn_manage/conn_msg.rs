@@ -2,21 +2,24 @@ use std::sync::Arc;
 
 use actix::prelude::*;
 
-use crate::client::{config_client::ConfigKey, naming_client::{Instance, QueryInstanceListParams, ServiceInstanceKey}};
+use crate::client::{
+    config_client::ConfigKey,
+    naming_client::{Instance, QueryInstanceListParams, ServiceInstanceKey},
+};
 
 #[derive(Debug, Message)]
 #[rtype(result = "anyhow::Result<ConfigResponse>")]
-pub enum ConfigRequest{
+pub enum ConfigRequest {
     GetConfig(ConfigKey),
-    SetConfig(ConfigKey,String),
+    SetConfig(ConfigKey, String),
     DeleteConfig(ConfigKey),
-    V1Listen(String),  // 兼容v1版本协议
-    Listen(Vec<(ConfigKey,String)>,bool),  //(key,md5)
+    V1Listen(String),                       // 兼容v1版本协议
+    Listen(Vec<(ConfigKey, String)>, bool), //(key,md5)
 }
 
 #[derive(Debug)]
-pub enum ConfigResponse{
-    ConfigValue(String,String), // (content,md5)
+pub enum ConfigResponse {
+    ConfigValue(String, String), // (content,md5)
     ChangeKeys(Vec<ConfigKey>),
     None,
 }
@@ -33,14 +36,14 @@ pub enum NamingRequest {
     V1Heartbeat(Arc<String>),
 }
 
-#[derive(Debug,Default,Clone)]
-pub struct ServiceResult{
-    pub hosts:Vec<Arc<Instance>>,
-    pub cache_millis:Option<u64>,
+#[derive(Debug, Default, Clone)]
+pub struct ServiceResult {
+    pub hosts: Vec<Arc<Instance>>,
+    pub cache_millis: Option<u64>,
 }
 
 #[derive(Debug)]
-pub enum NamingResponse{
+pub enum NamingResponse {
     ServiceResult(ServiceResult),
     None,
 }
@@ -48,6 +51,6 @@ pub enum NamingResponse{
 #[derive(Debug, Message)]
 #[rtype(result = "anyhow::Result<()>")]
 pub enum ConnCallbackMsg {
-    ConfigChange(ConfigKey,String,String),
-    InstanceChange(ServiceInstanceKey,ServiceResult),
+    ConfigChange(ConfigKey, String, String),
+    InstanceChange(ServiceInstanceKey, ServiceResult),
 }

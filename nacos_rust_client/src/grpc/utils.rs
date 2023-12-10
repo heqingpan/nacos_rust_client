@@ -1,34 +1,42 @@
 use std::collections::HashMap;
 
-use super::{nacos_proto, api_model::BaseResponse};
-
+use super::{api_model::BaseResponse, nacos_proto};
 
 pub struct PayloadUtils;
 
 impl PayloadUtils {
-    pub fn new_metadata(r#type:&str,client_ip:&str,headers:HashMap<String,String>) -> nacos_proto::Metadata {
+    pub fn new_metadata(
+        r#type: &str,
+        client_ip: &str,
+        headers: HashMap<String, String>,
+    ) -> nacos_proto::Metadata {
         nacos_proto::Metadata {
-            r#type:r#type.to_owned(),
-            client_ip:client_ip.to_owned(),
-            headers
+            r#type: r#type.to_owned(),
+            client_ip: client_ip.to_owned(),
+            headers,
         }
     }
 
-    pub fn build_error_payload(error_code:u16,error_msg:String) -> nacos_proto::Payload {
-        let error_val = BaseResponse::build_error_response(error_code,error_msg).to_json_string();
-        Self::build_payload("ErrorResponse",error_val)
+    pub fn build_error_payload(error_code: u16, error_msg: String) -> nacos_proto::Payload {
+        let error_val = BaseResponse::build_error_response(error_code, error_msg).to_json_string();
+        Self::build_payload("ErrorResponse", error_val)
     }
 
-    pub fn build_payload(url:&str,val: String) -> nacos_proto::Payload {
-        Self::build_full_payload(url,val,"",Default::default())
+    pub fn build_payload(url: &str, val: String) -> nacos_proto::Payload {
+        Self::build_full_payload(url, val, "", Default::default())
     }
 
-    pub fn build_full_payload(url:&str,val: String,client_ip:&str,headers:HashMap<String,String>) -> nacos_proto::Payload {
+    pub fn build_full_payload(
+        url: &str,
+        val: String,
+        client_ip: &str,
+        headers: HashMap<String, String>,
+    ) -> nacos_proto::Payload {
         let body = nacos_proto::Any {
             type_url: "".into(),
             value: val.into_bytes(),
         };
-        let meta = Self::new_metadata(url,client_ip,headers);
+        let meta = Self::new_metadata(url, client_ip, headers);
         nacos_proto::Payload {
             body: Some(body),
             metadata: Some(meta),
@@ -67,7 +75,9 @@ impl PayloadUtils {
         None
     }
 
-    pub fn get_metadata_type<'a>(metadata: &'a Option<nacos_proto::Metadata>) -> Option<&'a String> {
+    pub fn get_metadata_type<'a>(
+        metadata: &'a Option<nacos_proto::Metadata>,
+    ) -> Option<&'a String> {
         if let Some(meta) = metadata {
             return Some(&meta.r#type);
         }

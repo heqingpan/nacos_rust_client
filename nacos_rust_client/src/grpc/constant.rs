@@ -1,4 +1,3 @@
-
 pub const LABEL_SOURCE: &str = "source";
 pub const LABEL_SOURCE_SDK: &str = "sdk";
 pub const LABEL_SOURCE_CLUSTER: &str = "cluster";

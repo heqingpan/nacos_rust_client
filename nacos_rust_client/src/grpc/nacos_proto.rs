@@ -15,10 +15,8 @@ pub struct Metadata {
     #[prost(string, tag = "8")]
     pub client_ip: ::prost::alloc::string::String,
     #[prost(map = "string, string", tag = "7")]
-    pub headers: ::std::collections::HashMap<
-        ::prost::alloc::string::String,
-        ::prost::alloc::string::String,
-    >,
+    pub headers:
+        ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -31,8 +29,8 @@ pub struct Payload {
 /// Generated client implementations.
 pub mod request_stream_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     #[derive(Debug, Clone)]
     pub struct RequestStreamClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -76,9 +74,8 @@ pub mod request_stream_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::BoxBody>,
-            >>::Error: Into<StdError> + Send + Sync,
+            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
+                Into<StdError> + Send + Sync,
         {
             RequestStreamClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -121,19 +118,14 @@ pub mod request_stream_client {
             tonic::Response<tonic::codec::Streaming<super::Payload>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/RequestStream/requestStream",
-            );
+            let path = http::uri::PathAndQuery::from_static("/RequestStream/requestStream");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("RequestStream", "requestStream"));
@@ -144,8 +136,8 @@ pub mod request_stream_client {
 /// Generated client implementations.
 pub mod request_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     #[derive(Debug, Clone)]
     pub struct RequestClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -189,9 +181,8 @@ pub mod request_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::BoxBody>,
-            >>::Error: Into<StdError> + Send + Sync,
+            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
+                Into<StdError> + Send + Sync,
         {
             RequestClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -231,19 +222,17 @@ pub mod request_client {
             &mut self,
             request: impl tonic::IntoRequest<super::Payload>,
         ) -> std::result::Result<tonic::Response<super::Payload>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static("/Request/request");
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("Request", "request"));
+            req.extensions_mut()
+                .insert(GrpcMethod::new("Request", "request"));
             self.inner.unary(req, path, codec).await
         }
     }
@@ -251,8 +240,8 @@ pub mod request_client {
 /// Generated client implementations.
 pub mod bi_request_stream_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     #[derive(Debug, Clone)]
     pub struct BiRequestStreamClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -296,9 +285,8 @@ pub mod bi_request_stream_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::BoxBody>,
-            >>::Error: Into<StdError> + Send + Sync,
+            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
+                Into<StdError> + Send + Sync,
         {
             BiRequestStreamClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -341,19 +329,14 @@ pub mod bi_request_stream_client {
             tonic::Response<tonic::codec::Streaming<super::Payload>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/BiRequestStream/requestBiStream",
-            );
+            let path = http::uri::PathAndQuery::from_static("/BiRequestStream/requestBiStream");
             let mut req = request.into_streaming_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("BiRequestStream", "requestBiStream"));
@@ -369,19 +352,14 @@ pub mod request_stream_server {
     #[async_trait]
     pub trait RequestStream: Send + Sync + 'static {
         /// Server streaming response type for the requestStream method.
-        type requestStreamStream: futures_core::Stream<
-                Item = std::result::Result<super::Payload, tonic::Status>,
-            >
+        type requestStreamStream: futures_core::Stream<Item = std::result::Result<super::Payload, tonic::Status>>
             + Send
             + 'static;
         /// build a streamRequest
         async fn request_stream(
             &self,
             request: tonic::Request<super::Payload>,
-        ) -> std::result::Result<
-            tonic::Response<Self::requestStreamStream>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<Self::requestStreamStream>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct RequestStreamServer<T: RequestStream> {
@@ -406,10 +384,7 @@ pub mod request_stream_server {
                 max_encoding_message_size: None,
             }
         }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
+        pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
         where
             F: tonic::service::Interceptor,
         {
@@ -465,24 +440,19 @@ pub mod request_stream_server {
                 "/RequestStream/requestStream" => {
                     #[allow(non_camel_case_types)]
                     struct requestStreamSvc<T: RequestStream>(pub Arc<T>);
-                    impl<
-                        T: RequestStream,
-                    > tonic::server::ServerStreamingService<super::Payload>
-                    for requestStreamSvc<T> {
+                    impl<T: RequestStream> tonic::server::ServerStreamingService<super::Payload>
+                        for requestStreamSvc<T>
+                    {
                         type Response = super::Payload;
                         type ResponseStream = T::requestStreamStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::ResponseStream>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::Payload>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                (*inner).request_stream(request).await
-                            };
+                            let fut = async move { (*inner).request_stream(request).await };
                             Box::pin(fut)
                         }
                     }
@@ -509,18 +479,14 @@ pub mod request_stream_server {
                     };
                     Box::pin(fut)
                 }
-                _ => {
-                    Box::pin(async move {
-                        Ok(
-                            http::Response::builder()
-                                .status(200)
-                                .header("grpc-status", "12")
-                                .header("content-type", "application/grpc")
-                                .body(empty_body())
-                                .unwrap(),
-                        )
-                    })
-                }
+                _ => Box::pin(async move {
+                    Ok(http::Response::builder()
+                        .status(200)
+                        .header("grpc-status", "12")
+                        .header("content-type", "application/grpc")
+                        .body(empty_body())
+                        .unwrap())
+                }),
             }
         }
     }
@@ -586,10 +552,7 @@ pub mod request_server {
                 max_encoding_message_size: None,
             }
         }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
+        pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
         where
             F: tonic::service::Interceptor,
         {
@@ -645,13 +608,9 @@ pub mod request_server {
                 "/Request/request" => {
                     #[allow(non_camel_case_types)]
                     struct requestSvc<T: Request>(pub Arc<T>);
-                    impl<T: Request> tonic::server::UnaryService<super::Payload>
-                    for requestSvc<T> {
+                    impl<T: Request> tonic::server::UnaryService<super::Payload> for requestSvc<T> {
                         type Response = super::Payload;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::Payload>,
@@ -684,18 +643,14 @@ pub mod request_server {
                     };
                     Box::pin(fut)
                 }
-                _ => {
-                    Box::pin(async move {
-                        Ok(
-                            http::Response::builder()
-                                .status(200)
-                                .header("grpc-status", "12")
-                                .header("content-type", "application/grpc")
-                                .body(empty_body())
-                                .unwrap(),
-                        )
-                    })
-                }
+                _ => Box::pin(async move {
+                    Ok(http::Response::builder()
+                        .status(200)
+                        .header("grpc-status", "12")
+                        .header("content-type", "application/grpc")
+                        .body(empty_body())
+                        .unwrap())
+                }),
             }
         }
     }
@@ -733,19 +688,14 @@ pub mod bi_request_stream_server {
     #[async_trait]
     pub trait BiRequestStream: Send + Sync + 'static {
         /// Server streaming response type for the requestBiStream method.
-        type requestBiStreamStream: futures_core::Stream<
-                Item = std::result::Result<super::Payload, tonic::Status>,
-            >
+        type requestBiStreamStream: futures_core::Stream<Item = std::result::Result<super::Payload, tonic::Status>>
             + Send
             + 'static;
         /// Sends a commonRequest
         async fn request_bi_stream(
             &self,
             request: tonic::Request<tonic::Streaming<super::Payload>>,
-        ) -> std::result::Result<
-            tonic::Response<Self::requestBiStreamStream>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<Self::requestBiStreamStream>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct BiRequestStreamServer<T: BiRequestStream> {
@@ -770,10 +720,7 @@ pub mod bi_request_stream_server {
                 max_encoding_message_size: None,
             }
         }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
+        pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
         where
             F: tonic::service::Interceptor,
         {
@@ -829,24 +776,17 @@ pub mod bi_request_stream_server {
                 "/BiRequestStream/requestBiStream" => {
                     #[allow(non_camel_case_types)]
                     struct requestBiStreamSvc<T: BiRequestStream>(pub Arc<T>);
-                    impl<
-                        T: BiRequestStream,
-                    > tonic::server::StreamingService<super::Payload>
-                    for requestBiStreamSvc<T> {
+                    impl<T: BiRequestStream> tonic::server::StreamingService<super::Payload> for requestBiStreamSvc<T> {
                         type Response = super::Payload;
                         type ResponseStream = T::requestBiStreamStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::ResponseStream>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<tonic::Streaming<super::Payload>>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                (*inner).request_bi_stream(request).await
-                            };
+                            let fut = async move { (*inner).request_bi_stream(request).await };
                             Box::pin(fut)
                         }
                     }
@@ -873,18 +813,14 @@ pub mod bi_request_stream_server {
                     };
                     Box::pin(fut)
                 }
-                _ => {
-                    Box::pin(async move {
-                        Ok(
-                            http::Response::builder()
-                                .status(200)
-                                .header("grpc-status", "12")
-                                .header("content-type", "application/grpc")
-                                .body(empty_body())
-                                .unwrap(),
-                        )
-                    })
-                }
+                _ => Box::pin(async move {
+                    Ok(http::Response::builder()
+                        .status(200)
+                        .header("grpc-status", "12")
+                        .header("content-type", "application/grpc")
+                        .body(empty_body())
+                        .unwrap())
+                }),
             }
         }
     }

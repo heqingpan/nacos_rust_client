@@ -11,7 +11,7 @@ use crate::{
             ConfigRequest, ConfigResponse, ConnCallbackMsg, NamingRequest, NamingResponse,
             ServiceResult,
         },
-        manage::ConnManage,
+        manage::{ConnManage, ConnManageCmd},
     },
     grpc::{
         api_model::{BaseResponse, ConnectionSetupRequest},
@@ -37,6 +37,7 @@ type PayloadSenderType = tokio::sync::oneshot::Sender<Result<Payload, String>>;
 
 #[derive(Clone)]
 pub struct InnerGrpcClient {
+    id: u32,
     channel: Channel,
     //bi_request_stream_client: BiRequestStreamClient<Channel>,
     //request_client: RequestClient<Channel>,
@@ -45,21 +46,24 @@ pub struct InnerGrpcClient {
     conn_reader: bool,
     manage_addr: WeakAddr<ConnManage>,
     request_id: u64,
+    error_time: u8,
 }
 
 impl InnerGrpcClient {
-    pub fn new(addr: String, manage_addr: WeakAddr<ConnManage>) -> anyhow::Result<Self> {
+    pub fn new(id: u32, addr: String, manage_addr: WeakAddr<ConnManage>) -> anyhow::Result<Self> {
         let channel = Channel::from_shared(addr)?.connect_lazy();
-        Self::new_by_channel(channel, manage_addr)
+        Self::new_by_channel(id, channel, manage_addr)
     }
 
     pub fn new_by_channel(
+        id: u32,
         channel: Channel,
         manage_addr: WeakAddr<ConnManage>,
     ) -> anyhow::Result<Self> {
         //let bi_request_stream_client = BiRequestStreamClient::new(channel.clone());
         //let request_client = RequestClient::new(channel.clone());
         Ok(Self {
+            id,
             channel,
             //bi_request_stream_client,
             //request_client,
@@ -68,6 +72,7 @@ impl InnerGrpcClient {
             conn_reader: false,
             manage_addr,
             request_id: 0,
+            error_time: 0,
         })
     }
 
@@ -120,7 +125,7 @@ impl InnerGrpcClient {
         Ok(())
     }
 
-    fn wait_check_register(&mut self,ctx:&mut Context<Self>) {
+    fn wait_check_register(&mut self, ctx: &mut Context<Self>) {
         let channel = self.channel.clone();
         async move {
             for _ in 0..100 {
@@ -130,11 +135,11 @@ impl InnerGrpcClient {
                             return true;
                         }
                         tokio::time::sleep(Duration::from_millis(100)).await;
-                    },
-                    Err(err) =>{
-                        log::error!( "check_register error,{}",err.to_string());
+                    }
+                    Err(err) => {
+                        log::error!("check_register error,{}", err.to_string());
                         return false;
-                    },
+                    }
                 }
             }
             return false;
@@ -143,7 +148,7 @@ impl InnerGrpcClient {
         .map(|_r, act, _ctx| {
             //TODO 如果注册失败，触发重新建立链接
             //act.conn_reader=r;
-            act.conn_reader=true;
+            act.conn_reader = true;
         })
         .wait(ctx);
     }
@@ -181,7 +186,7 @@ impl InnerGrpcClient {
         }
         .into_actor(self)
         .map(|_, _, ctx| {
-            ctx.run_later(Duration::from_millis(50), |act,inner_ctx|{
+            ctx.run_later(Duration::from_millis(50), |act, inner_ctx| {
                 act.wait_check_register(inner_ctx);
             });
         })
@@ -314,24 +319,37 @@ impl InnerGrpcClient {
                     if let Some(sender) = sender {
                         sender.send(Ok(res)).ok();
                     }
+                    true
                 }
                 Err(err) => {
                     if let Some(sender) = sender {
                         sender.send(Err("request error".to_owned())).ok();
                     }
                     log::error!("do_request error, {:?}", &err);
+                    false
                 }
-            };
+            }
         }
         .into_actor(self)
-        .map(|_, _, _| {})
+        .map(|r, ctx, _| {
+            if !r {
+                ctx.error_time += 1;
+                if ctx.error_time > 1 {
+                    if let Some(manage_conn) = ctx.manage_addr.upgrade() {
+                        manage_conn.do_send(ConnManageCmd::GrpcRequestCheckError { id: ctx.id });
+                    }
+                    ctx.error_time = 0;
+                }
+            } else {
+                ctx.error_time = 0;
+            }
+        })
         .spawn(ctx);
     }
 
     fn convert_to_service_result(
         request: NotifySubscriberRequest,
     ) -> (ServiceInstanceKey, ServiceResult) {
-        
         if let Some(service_info) = request.service_info {
             let service_key = ServiceInstanceKey {
                 namespace_id: request.namespace,
@@ -344,12 +362,15 @@ impl InnerGrpcClient {
                 .into_iter()
                 .map(|e| Arc::new(GrpcNamingRequestUtils::convert_to_instance(e, &service_key)))
                 .collect();
-            (service_key,ServiceResult {
-                hosts,
-                cache_millis: Some(service_info.cache_millis as u64),
-            })
+            (
+                service_key,
+                ServiceResult {
+                    hosts,
+                    cache_millis: Some(service_info.cache_millis as u64),
+                },
+            )
         } else {
-            (Default::default(),Default::default())
+            (Default::default(), Default::default())
         }
     }
 
