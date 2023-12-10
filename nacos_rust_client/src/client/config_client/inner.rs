@@ -38,6 +38,7 @@ pub enum ConfigInnerCmd {
     REMOVE(ConfigKey, u64),
     Notify(Vec<NotifyConfigItem>),
     Close,
+    GrpcResubscribe,
 }
 
 pub enum ConfigInnerHandleResult {
@@ -80,6 +81,22 @@ impl ConfigInnerActor {
                 res
             }
             _ => Err(anyhow::anyhow!("send msg to ConnManage failed")),
+        }
+    }
+
+    fn grpc_resubscribe(&mut self, ctx: &mut actix::Context<Self>) {
+        if !self.use_grpc {
+            return;
+        }
+        if let Some(addr) = &self.conn_manage {
+            if let Some(addr) = addr.upgrade() {
+                let items = self
+                    .subscribe_map
+                    .iter()
+                    .map(|(key, _)| (key.clone(), "".to_owned()))
+                    .collect::<Vec<_>>();
+                addr.do_send(ConfigRequest::Listen(items, true));
+            }
         }
     }
 
@@ -164,9 +181,9 @@ impl Actor for ConfigInnerActor {
                 ));
             }
         }
-        ctx.run_later(Duration::from_millis(5), |act, ctx| {
-            act.listener(ctx);
-        });
+        //ctx.run_later(Duration::from_millis(5), |act, ctx| {
+        //    act.listener(ctx);
+        //});
     }
 }
 
@@ -239,6 +256,10 @@ impl Handler<ConfigInnerCmd> for ConfigInnerActor {
                 for item in items {
                     self.do_change_config(&item.key, item.content);
                 }
+                Ok(ConfigInnerHandleResult::None)
+            }
+            ConfigInnerCmd::GrpcResubscribe => {
+                self.grpc_resubscribe(ctx);
                 Ok(ConfigInnerHandleResult::None)
             }
         }

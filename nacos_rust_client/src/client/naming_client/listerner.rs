@@ -383,6 +383,20 @@ impl InnerNamingListener {
             self.udp_addr.do_send(UdpWorkerCmd::QueryUdpPort);
         }
     }
+
+    fn grpc_resubscribe(&mut self) {
+        if !self.use_grpc {
+            return;
+        }
+        for key_str in self.listeners.keys() {
+            let key = ServiceInstanceKey::from_str(key_str);
+            if key.service_name.is_empty() {
+                continue;
+            }
+            let request = NamingRequest::Subscribe(vec![key]);
+            Self::do_send_conn_msg(&self.conn_manage, request);
+        }
+    }
 }
 
 impl Actor for InnerNamingListener {
@@ -416,6 +430,7 @@ pub enum NamingListenerCmd {
     AddHeartbeat(ServiceInstanceKey),
     Heartbeat(String, u64),
     Close,
+    GrpcResubscribe,
 }
 
 impl Handler<NamingListenerCmd> for InnerNamingListener {
@@ -514,6 +529,9 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                 self.udp_addr.do_send(UdpWorkerCmd::Close);
                 log::info!("InnerNamingListener close");
                 ctx.stop();
+            }
+            NamingListenerCmd::GrpcResubscribe => {
+                self.grpc_resubscribe();
             }
         };
         Ok(())

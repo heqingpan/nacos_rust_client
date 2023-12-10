@@ -79,6 +79,19 @@ impl InnerNamingRegister {
             }
         }
     }
+
+    fn register_all_instances(&self) {
+        if !self.use_grpc {
+            return;
+        }
+        if let Some(conn_manage) = &self.conn_manage {
+            if let Some(addr) = conn_manage.upgrade() {
+                for instance in self.instances.values() {
+                    addr.do_send(NamingRequest::Register(instance.to_owned()));
+                }
+            }
+        }
+    }
 }
 
 impl Actor for InnerNamingRegister {
@@ -105,7 +118,8 @@ pub enum NamingRegisterCmd {
     Register(Instance),
     Remove(Instance),
     Heartbeat(String, u64),
-    Close(),
+    Close,
+    Reregister,
 }
 
 impl Handler<NamingRegisterCmd> for InnerNamingRegister {
@@ -144,8 +158,11 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                     self.timeout_set.add(time + self.period, key);
                 }
             }
-            NamingRegisterCmd::Close() => {
+            NamingRegisterCmd::Close => {
                 ctx.stop();
+            }
+            NamingRegisterCmd::Reregister => {
+                self.register_all_instances();
             }
         }
         Ok(())

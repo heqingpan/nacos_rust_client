@@ -168,7 +168,7 @@ impl NamingClient {
 
     pub(crate) fn droping(&self) {
         log::info!("NamingClient droping");
-        self.register.do_send(NamingRegisterCmd::Close());
+        self.register.do_send(NamingRegisterCmd::Close);
         self.listener_addr.do_send(NamingListenerCmd::Close);
     }
 

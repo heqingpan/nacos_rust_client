@@ -1,6 +1,9 @@
 use actix::WeakAddr;
 
-use crate::client::{config_client::inner::ConfigInnerActor, naming_client::InnerNamingListener};
+use crate::client::{
+    config_client::inner::ConfigInnerActor,
+    naming_client::{InnerNamingListener, InnerNamingRegister},
+};
 
 pub(crate) mod breaker;
 pub mod conn_msg;
@@ -12,4 +15,5 @@ pub mod manage;
 pub struct NotifyCallbackAddr {
     pub(crate) config_inner_addr: Option<WeakAddr<ConfigInnerActor>>,
     pub(crate) naming_listener_addr: Option<WeakAddr<InnerNamingListener>>,
+    pub(crate) naming_register_addr: Option<WeakAddr<InnerNamingRegister>>,
 }

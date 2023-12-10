@@ -12,10 +12,12 @@ use crate::{
         get_md5,
         nacos_client::{ActixSystemCmd, ActixSystemResult},
         naming_client::{
-            InnerNamingListener, InnerNamingRequestClient, NamingQueryCmd, NamingUtils,
+            InnerNamingListener, InnerNamingRegister, InnerNamingRequestClient, NamingListenerCmd,
+            NamingQueryCmd, NamingRegisterCmd, NamingUtils,
         },
         AuthInfo, HostInfo, ServerEndpointInfo,
     },
+    grpc::grpc_client::InnerGrpcClient,
     init_global_system_actor, ActorCreate,
 };
 
@@ -48,6 +50,7 @@ impl ConnManage {
         auth_info: Option<AuthInfo>,
         breaker_config: BreakerConfig,
     ) -> Self {
+        assert!(hosts.len() > 0);
         let mut id = 0;
         let breaker_config = Arc::new(breaker_config);
         let mut conns = Vec::with_capacity(hosts.len());
@@ -72,6 +75,12 @@ impl ConnManage {
     fn init_conn(&mut self, ctx: &mut Context<Self>) {
         self.current_index = self.select_index();
         let conn = self.conns.get_mut(self.current_index).unwrap();
+        log::info!(
+            "ConnManage init connect,host {}:{}",
+            &conn.host_info.ip,
+            &conn.host_info.port
+        );
+        conn.breaker.clear();
         if self.support_grpc {
             let addr = ctx.address().downgrade();
             conn.init_grpc(addr).ok();
@@ -109,7 +118,12 @@ impl ConnManage {
     }
 
     fn select_index(&self) -> usize {
-        NamingUtils::select_by_weight_fn(&self.conns, |e| e.weight)
+        let index = NamingUtils::select_by_weight_fn(&self.conns, |e| e.weight);
+        if index >= self.conns.len() {
+            0
+        } else {
+            index
+        }
     }
 
     fn reconnect(&mut self, old_index: usize, ctx: &mut Context<Self>) {
@@ -117,6 +131,7 @@ impl ConnManage {
             //已经重链过
             return;
         }
+        log::info!("ConnManage reconnect");
         if self.conns.len() == 1 {
             self.init_conn(ctx);
         } else {
@@ -131,12 +146,142 @@ impl ConnManage {
         self.reconnect_notify(ctx);
     }
 
-    fn reconnect_notify(&mut self, ctx: &mut Context<Self>) {
+    fn reconnect_notify(&mut self, _ctx: &mut Context<Self>) {
         if !self.support_grpc {
             return;
         }
         if let Some(config_addr) = &self.callback.config_inner_addr {
-            if let Some(config_addr) = config_addr.upgrade() {}
+            if let Some(config_addr) = config_addr.upgrade() {
+                config_addr.do_send(ConfigInnerCmd::GrpcResubscribe);
+            }
+        }
+        if let Some(naming_register_addr) = &self.callback.naming_register_addr {
+            if let Some(naming_register_addr) = naming_register_addr.upgrade() {
+                naming_register_addr.do_send(NamingRegisterCmd::Reregister);
+            }
+        }
+        if let Some(naming_listener_addr) = &self.callback.naming_listener_addr {
+            if let Some(naming_listener_addr) = naming_listener_addr.upgrade() {
+                naming_listener_addr.do_send(NamingListenerCmd::GrpcResubscribe);
+            }
+        }
+    }
+
+    fn check_reconnect(
+        &mut self,
+        current_index: usize,
+        request_is_ok: bool,
+        ctx: &mut Context<Self>,
+    ) {
+        let can_try = if let Some(conn) = self.conns.get_mut(current_index) {
+            if request_is_ok {
+                conn.breaker.success();
+                true
+            } else {
+                conn.breaker.error();
+                conn.breaker.can_try()
+            }
+        } else {
+            true
+        };
+        if !can_try {
+            self.reconnect(current_index, ctx);
+        }
+    }
+
+    async fn do_config_request(
+        msg: ConfigRequest,
+        support_grpc: bool,
+        conn_addr: Option<Addr<InnerGrpcClient>>,
+        config_client: Option<Arc<ConfigInnerRequestClient>>,
+    ) -> anyhow::Result<ConfigResponse> {
+        if support_grpc {
+            if let Some(conn_addr) = conn_addr {
+                if let Ok(Ok(res)) = conn_addr.send(msg).await {
+                    Ok(res)
+                } else {
+                    Err(anyhow::anyhow!("grpc request error"))
+                }
+            } else {
+                Err(anyhow::anyhow!("grpc conn is empty"))
+            }
+        } else {
+            if let Some(config_client) = config_client {
+                match msg {
+                    ConfigRequest::GetConfig(config_key) => {
+                        let value = config_client.get_config(&config_key).await?;
+                        let md5 = get_md5(&value);
+                        Ok(ConfigResponse::ConfigValue(value, md5))
+                    }
+                    ConfigRequest::SetConfig(config_key, value) => {
+                        config_client.set_config(&config_key, &value).await?;
+                        Ok(ConfigResponse::None)
+                    }
+                    ConfigRequest::DeleteConfig(config_key) => {
+                        config_client.del_config(&config_key).await?;
+                        Ok(ConfigResponse::None)
+                    }
+                    ConfigRequest::V1Listen(content) => {
+                        let config_keys = config_client.listene(&content, None).await?;
+                        Ok(ConfigResponse::ChangeKeys(config_keys))
+                    }
+                    ConfigRequest::Listen(_, _) => Err(anyhow::anyhow!("http not support")),
+                }
+            } else {
+                Err(anyhow::anyhow!("config client is empty"))
+            }
+        }
+    }
+
+    async fn do_naming_request(
+        msg: NamingRequest,
+        support_grpc: bool,
+        conn_addr: Option<Addr<InnerGrpcClient>>,
+        naming_client: Option<Arc<InnerNamingRequestClient>>,
+    ) -> anyhow::Result<NamingResponse> {
+        if support_grpc {
+            if let Some(conn_addr) = conn_addr {
+                let res: NamingResponse = conn_addr.send(msg).await??;
+                Ok(res)
+            } else {
+                Err(anyhow::anyhow!("grpc conn is empty"))
+            }
+        } else {
+            if let Some(naming_client) = naming_client {
+                match msg {
+                    NamingRequest::Register(instance) => {
+                        naming_client.register(&instance).await?;
+                        Ok(NamingResponse::None)
+                    }
+                    NamingRequest::Unregister(instance) => {
+                        naming_client.remove(&instance).await?;
+                        Ok(NamingResponse::None)
+                    }
+                    NamingRequest::BatchRegister(_) => Err(anyhow::anyhow!("http not support")),
+                    NamingRequest::Subscribe(_) => Err(anyhow::anyhow!("http not support")),
+                    NamingRequest::Unsubscribe(_) => Err(anyhow::anyhow!("http not support")),
+                    NamingRequest::QueryInstance(param) => {
+                        let result = naming_client.get_instance_list(&param).await?;
+                        let hosts = result
+                            .hosts
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|e| Arc::new(e.to_instance()))
+                            .collect();
+                        let service_result = ServiceResult {
+                            hosts,
+                            cache_millis: result.cache_millis,
+                        };
+                        Ok(NamingResponse::ServiceResult(service_result))
+                    }
+                    NamingRequest::V1Heartbeat(heartbeat) => {
+                        naming_client.heartbeat(heartbeat).await?;
+                        Ok(NamingResponse::None)
+                    }
+                }
+            } else {
+                Err(anyhow::anyhow!("naming client is empty"))
+            }
         }
     }
 }
@@ -161,6 +306,7 @@ impl Actor for ConnManage {
 pub enum ConnManageCmd {
     ConfigInnerActorAddr(WeakAddr<ConfigInnerActor>),
     NamingListenerActorAddr(WeakAddr<InnerNamingListener>),
+    NamingRegisterActorAddr(WeakAddr<InnerNamingRegister>),
     GrpcRequestCheckError { id: u32 },
 }
 
@@ -174,6 +320,9 @@ impl Handler<ConnManageCmd> for ConnManage {
             }
             ConnManageCmd::NamingListenerActorAddr(addr) => {
                 self.callback.naming_listener_addr = Some(addr);
+            }
+            ConnManageCmd::NamingRegisterActorAddr(addr) => {
+                self.callback.naming_register_addr = Some(addr);
             }
             ConnManageCmd::GrpcRequestCheckError { id } => self.reconnect(id as usize, ctx),
         }
@@ -221,45 +370,18 @@ impl Handler<ConfigRequest> for ConnManage {
     fn handle(&mut self, msg: ConfigRequest, _ctx: &mut Self::Context) -> Self::Result {
         let conn = self.conns.get(self.current_index).unwrap();
         let conn_addr = conn.grpc_client_addr.clone();
+        let current_index = self.current_index.to_owned();
         let support_grpc = self.support_grpc;
         let config_client = conn.config_request_client.clone();
         let fut = async move {
-            if support_grpc {
-                if let Some(conn_addr) = conn_addr {
-                    let res: ConfigResponse = conn_addr.send(msg).await??;
-                    Ok(res)
-                } else {
-                    Err(anyhow::anyhow!("grpc conn is empty"))
-                }
-            } else {
-                if let Some(config_client) = config_client {
-                    match msg {
-                        ConfigRequest::GetConfig(config_key) => {
-                            let value = config_client.get_config(&config_key).await?;
-                            let md5 = get_md5(&value);
-                            Ok(ConfigResponse::ConfigValue(value, md5))
-                        }
-                        ConfigRequest::SetConfig(config_key, value) => {
-                            config_client.set_config(&config_key, &value).await?;
-                            Ok(ConfigResponse::None)
-                        }
-                        ConfigRequest::DeleteConfig(config_key) => {
-                            config_client.del_config(&config_key).await?;
-                            Ok(ConfigResponse::None)
-                        }
-                        ConfigRequest::V1Listen(content) => {
-                            let config_keys = config_client.listene(&content, None).await?;
-                            Ok(ConfigResponse::ChangeKeys(config_keys))
-                        }
-                        ConfigRequest::Listen(_, _) => Err(anyhow::anyhow!("http not support")),
-                    }
-                } else {
-                    Err(anyhow::anyhow!("config client is empty"))
-                }
-            }
+            let r = Self::do_config_request(msg, support_grpc, conn_addr, config_client).await;
+            (r, current_index)
         }
         .into_actor(self)
-        .map(|r, _act, _ctx| r);
+        .map(|(r, current_index), act, ctx| {
+            act.check_reconnect(current_index, r.is_ok(), ctx);
+            r
+        });
         Box::pin(fut)
     }
 }
@@ -272,54 +394,16 @@ impl Handler<NamingRequest> for ConnManage {
         let conn_addr = conn.grpc_client_addr.clone();
         let support_grpc = self.support_grpc;
         let naming_client = conn.naming_request_client.clone();
+        let current_index = self.current_index.to_owned();
         let fut = async move {
-            if support_grpc {
-                if let Some(conn_addr) = conn_addr {
-                    let res: NamingResponse = conn_addr.send(msg).await??;
-                    Ok(res)
-                } else {
-                    Err(anyhow::anyhow!("grpc conn is empty"))
-                }
-            } else {
-                if let Some(naming_client) = naming_client {
-                    match msg {
-                        NamingRequest::Register(instance) => {
-                            naming_client.register(&instance).await?;
-                            Ok(NamingResponse::None)
-                        }
-                        NamingRequest::Unregister(instance) => {
-                            naming_client.remove(&instance).await?;
-                            Ok(NamingResponse::None)
-                        }
-                        NamingRequest::BatchRegister(_) => Err(anyhow::anyhow!("http not support")),
-                        NamingRequest::Subscribe(_) => Err(anyhow::anyhow!("http not support")),
-                        NamingRequest::Unsubscribe(_) => Err(anyhow::anyhow!("http not support")),
-                        NamingRequest::QueryInstance(param) => {
-                            let result = naming_client.get_instance_list(&param).await?;
-                            let hosts = result
-                                .hosts
-                                .unwrap_or_default()
-                                .into_iter()
-                                .map(|e| Arc::new(e.to_instance()))
-                                .collect();
-                            let service_result = ServiceResult {
-                                hosts,
-                                cache_millis: result.cache_millis,
-                            };
-                            Ok(NamingResponse::ServiceResult(service_result))
-                        }
-                        NamingRequest::V1Heartbeat(heartbeat) => {
-                            naming_client.heartbeat(heartbeat).await?;
-                            Ok(NamingResponse::None)
-                        }
-                    }
-                } else {
-                    Err(anyhow::anyhow!("naming client is empty"))
-                }
-            }
+            let r = Self::do_naming_request(msg, support_grpc, conn_addr, naming_client).await;
+            (r, current_index)
         }
         .into_actor(self)
-        .map(|r, _act, _ctx| r);
+        .map(|(r, current_index), act, ctx| {
+            act.check_reconnect(current_index, r.is_ok(), ctx);
+            r
+        });
         Box::pin(fut)
     }
 }

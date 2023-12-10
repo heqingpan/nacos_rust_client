@@ -54,6 +54,11 @@ impl Breaker {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.status = BreakerStatus::Close;
+        self.error_times = 0;
+    }
+
     pub fn error(&mut self) -> &BreakerStatus {
         self.error_times += 1;
         match &self.status {
