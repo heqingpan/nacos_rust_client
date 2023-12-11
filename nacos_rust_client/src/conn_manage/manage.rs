@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use actix::{prelude::*, WeakAddr};
 
@@ -41,6 +41,7 @@ pub struct ConnManage {
     conn_globda_id: u32,
     breaker_config: Arc<BreakerConfig>,
     pub(crate) callback: NotifyCallbackAddr,
+    reconnecting: bool,
 }
 
 impl ConnManage {
@@ -127,25 +128,29 @@ impl ConnManage {
     }
 
     fn reconnect(&mut self, old_index: usize, ctx: &mut Context<Self>) {
-        if self.current_index != old_index {
-            log::warn!("ConnManage reconnect,ignore repeated");
+        if self.reconnecting || self.current_index != old_index {
+            //log::debug!("ConnManage reconnect,ignore repeated");
             //已经重链过
             return;
         }
-        log::info!("ConnManage reconnect");
-        if self.conns.len() == 1 {
-            self.init_conn(ctx);
-        } else {
-            if let Some(conn) = self.conns.get_mut(old_index) {
-                conn.close_grpc().ok();
-                conn.weight = 0;
+        self.reconnecting = true;
+        ctx.run_later(Duration::from_millis(1000), move |act, ctx| {
+            log::info!("ConnManage reconnect");
+            if act.conns.len() == 1 {
+                act.init_conn(ctx);
+            } else {
+                if let Some(conn) = act.conns.get_mut(old_index) {
+                    conn.close_grpc().ok();
+                    conn.weight = 0;
+                }
+                act.init_conn(ctx);
+                if let Some(conn) = act.conns.get_mut(old_index) {
+                    conn.weight = 1;
+                }
             }
-            self.init_conn(ctx);
-            if let Some(conn) = self.conns.get_mut(old_index) {
-                conn.weight = 1;
-            }
-        }
-        self.reconnect_notify(ctx);
+            act.reconnect_notify(ctx);
+            act.reconnecting = false;
+        });
     }
 
     fn reconnect_notify(&mut self, _ctx: &mut Context<Self>) {

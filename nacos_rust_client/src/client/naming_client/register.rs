@@ -2,6 +2,7 @@ use crate::client::naming_client::REGISTER_PERIOD;
 use crate::client::now_millis;
 use crate::conn_manage::conn_msg::NamingRequest;
 use crate::conn_manage::manage::ConnManage;
+use crate::conn_manage::manage::ConnManageCmd;
 use actix::prelude::*;
 use actix::WeakAddr;
 use std::collections::HashMap;
@@ -99,6 +100,13 @@ impl Actor for InnerNamingRegister {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         log::info!(" InnerNamingRegister started");
+        if let Some(addr) = &self.conn_manage {
+            if let Some(addr) = addr.upgrade() {
+                addr.do_send(ConnManageCmd::NamingRegisterActorAddr(
+                    ctx.address().downgrade(),
+                ));
+            }
+        }
         self.hb(ctx);
     }
 

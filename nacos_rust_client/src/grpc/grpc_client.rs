@@ -117,6 +117,9 @@ impl InnerGrpcClient {
                 }
                 Err(err) => {
                     log::error!("conn_bi_stream error,{:?}", &err);
+                    if let Some(manage_conn) = actor.manage_addr.upgrade() {
+                        manage_conn.do_send(ConnManageCmd::GrpcRequestCheckError { id: actor.id });
+                    }
                     ctx.stop();
                 }
             };
@@ -295,7 +298,10 @@ impl InnerGrpcClient {
             //manage.do_send(BiStreamManageCmd::ConnClose(client_id));
         }
         .into_actor(self)
-        .map(|_, _, ctx| {
+        .map(|_, actor, ctx| {
+            if let Some(manage_conn) = actor.manage_addr.upgrade() {
+                manage_conn.do_send(ConnManageCmd::GrpcRequestCheckError { id: actor.id });
+            }
             ctx.stop();
         })
         .spawn(ctx);
@@ -331,18 +337,18 @@ impl InnerGrpcClient {
             }
         }
         .into_actor(self)
-        .map(|r, ctx, _| {
+        .map(|r, act, _| {
             if !r {
-                ctx.error_time += 1;
-                if ctx.error_time > 1 {
+                act.error_time += 1;
+                if act.error_time > 1 {
                     log::warn!("GrpcRequestCheckError");
-                    if let Some(manage_conn) = ctx.manage_addr.upgrade() {
-                        manage_conn.do_send(ConnManageCmd::GrpcRequestCheckError { id: ctx.id });
+                    if let Some(manage_conn) = act.manage_addr.upgrade() {
+                        manage_conn.do_send(ConnManageCmd::GrpcRequestCheckError { id: act.id });
                     }
-                    ctx.error_time = 0;
+                    act.error_time = 0;
                 }
             } else {
-                ctx.error_time = 0;
+                act.error_time = 0;
             }
         })
         .spawn(ctx);
@@ -440,7 +446,7 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
         let fut = async move {
             if !conn_reader {
                 //等链接确认后再请求
-                log::info!("wait check register,than handle msg");
+                //log::debug!("wait check register,than handle msg");
                 tokio::time::sleep(Duration::from_millis(60)).await;
             }
             match config_request {
@@ -533,7 +539,7 @@ impl Handler<NamingRequest> for InnerGrpcClient {
         let fut = async move {
             if !conn_reader {
                 //等链接确认后再请求
-                log::info!("wait check register,than handle msg");
+                //log::debug!("wait check register,than handle msg");
                 tokio::time::sleep(Duration::from_millis(60)).await;
             }
             match request {
