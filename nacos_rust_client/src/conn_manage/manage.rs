@@ -119,12 +119,17 @@ impl ConnManage {
     }
 
     fn select_index(&self) -> usize {
-        let index = NamingUtils::select_by_weight_fn(&self.conns, |e| e.weight);
-        if index >= self.conns.len() {
-            0
-        } else {
-            index
-        }
+        NamingUtils::select_by_weight_fn(&self.conns, |e| {
+            if e.breaker.is_close(){
+                1000
+            }
+            else if e.breaker.is_half_open() {
+                10
+            }
+            else {
+                1
+            }
+        })
     }
 
     fn reconnect(&mut self, old_index: usize, ctx: &mut Context<Self>) {

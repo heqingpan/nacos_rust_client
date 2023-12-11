@@ -177,12 +177,15 @@ impl NamingUtils {
     }
 
     fn do_select_index(list: &Vec<u64>, rand_value: u64) -> usize {
+        let len = list.len();
+        if len <= 1 {
+            return 0;
+        }
         match list.binary_search(&rand_value) {
             Ok(i) => i,
             Err(i) => {
-                let len = list.len();
                 if i >= len {
-                    len
+                    len-1
                 } else {
                     i
                 }
@@ -205,7 +208,7 @@ impl NamingUtils {
         }
         //let rng = rand::thread_rng();
         let mut rng: StdRng = StdRng::from_entropy();
-        let range_uniform = Uniform::new(0, sum);
+        let range_uniform = Uniform::new(1, sum+1);
         let rand_value = range_uniform.sample(&mut rng);
         //let rand_value= rand::thread_rng().gen_range(0..sum);
         Self::do_select_index(&superposition_list, rand_value)
