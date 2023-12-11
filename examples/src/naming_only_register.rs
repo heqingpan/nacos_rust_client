@@ -86,7 +86,13 @@ fn build_conn_manages(thread_num: u16) -> Vec<Addr<ConnManage>> {
     let mut rlist = vec![];
     let endpoint = ServerEndpointInfo::new("127.0.0.1:8848,127.0.0.1:8848");
     for _ in 0..thread_num {
-        let conn_manage = ConnManage::new(endpoint.hosts.clone(), true, None, Default::default());
+        let conn_manage = ConnManage::new(
+            endpoint.hosts.clone(),
+            true,
+            None,
+            Default::default(),
+            Default::default(),
+        );
         let conn_manage_addr = start_actor_at_new_thread(conn_manage);
         rlist.push(conn_manage_addr);
     }

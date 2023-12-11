@@ -4,12 +4,20 @@
 ## 介绍
 rust实现的nacos客户端。
 
-同时支持`1.x`版http协议和`2.x`版本协议，支持创建client时指定使用协议类型。
+nacos_rust_client是我在写[r-nacos](https://github.com/heqingpan/rnacos) (用rust重写的nacos服务)过程中实现的客户端，服务端与客户端相互验证，目前已比较稳定推荐使用。
+
+0.3.x版本开始同时支持nacos `1.x`版http协议和`2.x`版本协议，支持在创建client时指定使用协议类型。
+
+0.2.x版本只支持nacos `1.x`版http协议.
+
+0.3.x版本兼容0.2版本api，建议使用nacos_rust_client都升级到0.3.x版本。
+
+特点：
 
 1. 使用 actix + tokio 实现。
 2. 支持配置中心的推送、获取、监听。
 3. 支持注册中心的服务实例注册(自动维护心跳)、服务实例获取(自动监听缓存实例列表)。
-4. 创建的客户端后台处理，都放在同一个actix环境线程;高性能，不会有线程膨胀，稳定可控。
+4. 创建的客户端后台处理，都放在同一个actix环境线程; 高性能，不会有线程膨胀，稳定可控。
 
 
 ## 使用方式
@@ -18,19 +26,20 @@ rust实现的nacos客户端。
 
 ```toml
 [dependencies]
-nacos_rust_client = "0.2"
+nacos_rust_client = "0.3"
 ```
 
 ### 使用配置中心
 
 1. 创建客户端
 
-使用`ConfigClient::new_with_addrs`创建配置客户端，支持设置集群地址列表，支持验权校验.
+使用`ClientBuilder`创建配置客户端，支持设置集群地址列表，支持验权校验.
 
 ```rust
 use nacos_rust_client::client::config_client::ConfigClient;
 use nacos_rust_client::client::ClientBuilder;
 //...
+//兼容旧版本的创建方式，旧版本创建方式使用http协议
 //let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,auth_info);
 let config_client = ClientBuilder::new()
         .set_endpoint_addrs("127.0.0.1:8848,127.0.0.1:8848")
@@ -83,6 +92,7 @@ let foo_obj_from_listener = foo_config_obj_listener.get_value().unwrap();
 use nacos_rust_client::client::naming_client::NamingClient;
 use nacos_rust_client::client::ClientBuilder;
 //...
+//兼容旧版本的创建方式，旧版本创建方式使用http协议
 //let naming_client = NamingClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",namespace_id,auth_info);
 let naming_client = ClientBuilder::new()
         .set_endpoint_addrs("127.0.0.1:8848,127.0.0.1:8848")
@@ -143,7 +153,7 @@ let instance_result=client.select_instance(params).await;
 use std::time::Duration;
 use std::sync::Arc;
 
-use nacos_rust_client::client::{ HostInfo, AuthInfo };
+use nacos_rust_client::client::{ HostInfo, ClientBuilder, AuthInfo };
 use nacos_rust_client::client::config_client::{
     ConfigClient,ConfigKey,ConfigDefaultListener
 };
@@ -165,7 +175,13 @@ async fn main() {
     let tenant = "public".to_owned(); //default teant
     //let auth_info = Some(AuthInfo::new("nacos","nacos"));
     let auth_info = None;
-    let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,auth_info);
+    //let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,auth_info);
+    let config_client = ClientBuilder::new()
+        .set_endpoint_addrs("127.0.0.1:8848,127.0.0.1:8848")
+        .set_auth_info(auth_info)
+        .set_tenant(tenant)
+        .set_use_grpc(true)
+        .build_config_client();
     tokio::time::sleep(Duration::from_millis(1000)).await;
 
     let key = ConfigKey::new("001","foo","");
@@ -226,7 +242,7 @@ use std::sync::Arc;
 
 use std::time::Duration;
 
-use nacos_rust_client::client::{HostInfo, AuthInfo, naming_client::{NamingClient, Instance,QueryInstanceListParams}};
+use nacos_rust_client::client::{HostInfo, ClientBuilder, AuthInfo, naming_client::{NamingClient, Instance,QueryInstanceListParams}};
 
 
 
@@ -240,7 +256,14 @@ async fn main(){
     let namespace_id = "public".to_owned(); //default teant
     //let auth_info = Some(AuthInfo::new("nacos","nacos"));
     let auth_info = None;
-    let client = NamingClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848", namespace_id, auth_info);
+    //let client = NamingClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848", namespace_id, auth_info);
+    let client = ClientBuilder::new()
+        .set_endpoint_addrs("127.0.0.1:8848,127.0.0.1:8848")
+        .set_auth_info(auth_info)
+        .set_tenant(namespace_id)
+        .set_use_grpc(true)
+        .set_app_name("foo".to_owned())
+        .build_naming_client();
     let servcie_key = ServiceInstanceKey::new("foo","DEFAULT_GROUP");
     //可以通过监听器获取指定服务的最新实现列表，并支持触发变更回调函数,可用于适配微服务地址选择器。
     let default_listener = InstanceDefaultListener::new(servcie_key,Some(Arc::new(
