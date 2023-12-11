@@ -185,7 +185,7 @@ impl NamingUtils {
             Ok(i) => i,
             Err(i) => {
                 if i >= len {
-                    len-1
+                    len - 1
                 } else {
                     i
                 }
@@ -208,7 +208,7 @@ impl NamingUtils {
         }
         //let rng = rand::thread_rng();
         let mut rng: StdRng = StdRng::from_entropy();
-        let range_uniform = Uniform::new(1, sum+1);
+        let range_uniform = Uniform::new(1, sum + 1);
         let rand_value = range_uniform.sample(&mut rng);
         //let rand_value= rand::thread_rng().gen_range(0..sum);
         Self::do_select_index(&superposition_list, rand_value)

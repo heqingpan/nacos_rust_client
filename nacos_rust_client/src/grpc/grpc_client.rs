@@ -5,7 +5,7 @@ use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 
 use crate::{
-    client::{config_client::ConfigKey, naming_client::ServiceInstanceKey},
+    client::{config_client::ConfigKey, naming_client::ServiceInstanceKey, ClientInfo},
     conn_manage::{
         conn_msg::{
             ConfigRequest, ConfigResponse, ConnCallbackMsg, NamingRequest, NamingResponse,
@@ -47,18 +47,25 @@ pub struct InnerGrpcClient {
     manage_addr: WeakAddr<ConnManage>,
     request_id: u64,
     error_time: u8,
+    client_info: Arc<ClientInfo>,
 }
 
 impl InnerGrpcClient {
-    pub fn new(id: u32, addr: String, manage_addr: WeakAddr<ConnManage>) -> anyhow::Result<Self> {
+    pub fn new(
+        id: u32,
+        addr: String,
+        manage_addr: WeakAddr<ConnManage>,
+        client_info: Arc<ClientInfo>,
+    ) -> anyhow::Result<Self> {
         let channel = Channel::from_shared(addr)?.connect_lazy();
-        Self::new_by_channel(id, channel, manage_addr)
+        Self::new_by_channel(id, channel, manage_addr, client_info)
     }
 
     pub fn new_by_channel(
         id: u32,
         channel: Channel,
         manage_addr: WeakAddr<ConnManage>,
+        client_info: Arc<ClientInfo>,
     ) -> anyhow::Result<Self> {
         //let bi_request_stream_client = BiRequestStreamClient::new(channel.clone());
         //let request_client = RequestClient::new(channel.clone());
@@ -73,6 +80,7 @@ impl InnerGrpcClient {
             manage_addr,
             request_id: 0,
             error_time: 0,
+            client_info,
         })
     }
 
@@ -158,22 +166,23 @@ impl InnerGrpcClient {
 
     fn bi_stream_setup(&mut self, ctx: &mut Context<Self>) {
         let tx = self.stream_sender.clone().unwrap();
+        let client_info = self.client_info.clone();
         async move {
             let mut setup_request = ConnectionSetupRequest::default();
             setup_request
                 .labels
-                .insert("AppName".to_owned(), "rust_nacos_client".to_owned());
+                .insert("AppName".to_owned(), client_info.app_name.to_owned());
             setup_request
                 .labels
                 .insert(LABEL_MODULE.to_owned(), LABEL_MODULE_NAMING.to_owned());
             //setup_request.labels.insert(LABEL_MODULE.to_owned(), LABEL_MODULE_CONFIG.to_owned());
-            setup_request.client_version = Some("0.3.".to_owned());
+            setup_request.client_version = Some("0.3".to_owned());
             match tx
                 .send(Some(PayloadUtils::build_full_payload(
                     "ConnectionSetupRequest",
                     serde_json::to_string(&setup_request).unwrap(),
-                    "127.0.0.1",
-                    HashMap::new(),
+                    &client_info.client_ip,
+                    client_info.headers.clone(),
                 )))
                 .await
             {

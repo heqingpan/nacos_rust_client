@@ -99,6 +99,41 @@ impl AuthInfo {
     }
 }
 
+/// 客户端信息
+#[derive(Debug, Clone)]
+pub struct ClientInfo {
+    /// 客户端IP
+    pub client_ip: String,
+    /// 应用名
+    pub app_name: String,
+    /// 链接扩展信息
+    pub headers: HashMap<String, String>,
+}
+
+impl Default for ClientInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ClientInfo {
+    pub fn new() -> Self {
+        let client_ip = match std::env::var("NACOS_CLIENT_IP") {
+            Ok(v) => v,
+            Err(_) => local_ipaddress::get().unwrap_or("127.0.0.1".to_owned()),
+        };
+        let app_name = match std::env::var("NACOS_CLIENT_APP_NAME") {
+            Ok(v) => v,
+            Err(_) => "UNKNOWN".to_owned(),
+        };
+        Self {
+            client_ip,
+            app_name,
+            headers: HashMap::new(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenInfo {

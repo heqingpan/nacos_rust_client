@@ -1,11 +1,11 @@
-use std::{env, sync::Arc};
+use std::{collections::HashMap, env, sync::Arc};
 
 use crate::{conn_manage::manage::ConnManage, init_global_system_actor};
 
 use super::{
     config_client::inner_client::ConfigInnerRequestClient, nacos_client::ActixSystemActorSetCmd,
-    naming_client::InnerNamingRequestClient, AuthInfo, ConfigClient, HostInfo, NamingClient,
-    ServerEndpointInfo,
+    naming_client::InnerNamingRequestClient, AuthInfo, ClientInfo, ConfigClient, HostInfo,
+    NamingClient, ServerEndpointInfo,
 };
 
 #[derive(Clone, Debug)]
@@ -14,22 +14,18 @@ pub struct ClientBuilder {
     tenant: String,
     auth_info: Option<AuthInfo>,
     use_grpc: bool,
-    client_ip: String,
+    client_info: ClientInfo,
 }
 
 impl ClientBuilder {
     pub fn new() -> Self {
-        let client_ip = match env::var("NACOS_CLIENT_IP") {
-            Ok(v) => v,
-            Err(_) => local_ipaddress::get().unwrap_or("127.0.0.1".to_owned()),
-        };
         let endpoint = ServerEndpointInfo::new("");
         Self {
             endpoint,
             tenant: "public".to_owned(),
             auth_info: None,
             use_grpc: true,
-            client_ip,
+            client_info: Default::default(),
         }
     }
 
@@ -63,8 +59,23 @@ impl ClientBuilder {
         self
     }
 
+    pub fn set_client_info(mut self, client_info: ClientInfo) -> Self {
+        self.client_info = client_info;
+        self
+    }
+
     pub fn set_client_ip(mut self, client_ip: String) -> Self {
-        self.client_ip = client_ip;
+        self.client_info.client_ip = client_ip;
+        self
+    }
+
+    pub fn set_app_name(mut self, app_name: String) -> Self {
+        self.client_info.app_name = app_name;
+        self
+    }
+
+    pub fn set_headers(mut self, headers: HashMap<String, String>) -> Self {
+        self.client_info.headers = headers;
         self
     }
 
@@ -84,16 +95,17 @@ impl ClientBuilder {
         let endpoint = Arc::new(self.endpoint);
         let namespace_id = self.tenant.clone();
         let tenant = self.tenant;
+        let current_ip = self.client_info.client_ip.clone();
 
         let conn_manage = ConnManage::new(
             endpoint.hosts.clone(),
             use_grpc,
             auth_info.clone(),
             Default::default(),
+            Arc::new(self.client_info),
         );
         let conn_manage_addr = conn_manage.start_at_global_system();
         let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint.clone());
-        let current_ip = self.client_ip;
         let addrs = NamingClient::init_register(
             namespace_id.clone(),
             current_ip.clone(),

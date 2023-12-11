@@ -15,7 +15,7 @@ use crate::{
             InnerNamingListener, InnerNamingRegister, InnerNamingRequestClient, NamingListenerCmd,
             NamingQueryCmd, NamingRegisterCmd, NamingUtils,
         },
-        AuthInfo, HostInfo, ServerEndpointInfo,
+        AuthInfo, ClientInfo, HostInfo, ServerEndpointInfo,
     },
     grpc::grpc_client::InnerGrpcClient,
     init_global_system_actor, ActorCreate,
@@ -42,6 +42,7 @@ pub struct ConnManage {
     breaker_config: Arc<BreakerConfig>,
     pub(crate) callback: NotifyCallbackAddr,
     reconnecting: bool,
+    client_info: Arc<ClientInfo>,
 }
 
 impl ConnManage {
@@ -50,6 +51,7 @@ impl ConnManage {
         support_grpc: bool,
         auth_info: Option<AuthInfo>,
         breaker_config: BreakerConfig,
+        client_info: Arc<ClientInfo>,
     ) -> Self {
         assert!(hosts.len() > 0);
         let mut id = 0;
@@ -57,7 +59,13 @@ impl ConnManage {
         let mut conns = Vec::with_capacity(hosts.len());
         let mut conn_map = HashMap::new();
         for host in hosts {
-            let conn = InnerConn::new(id, host, support_grpc, breaker_config.clone());
+            let conn = InnerConn::new(
+                id,
+                host,
+                support_grpc,
+                breaker_config.clone(),
+                client_info.clone(),
+            );
             conn_map.insert(id, id);
             id += 1;
             conns.push(conn);
@@ -69,8 +77,14 @@ impl ConnManage {
             auth_info,
             conn_globda_id: id,
             breaker_config,
+            client_info,
             ..Default::default()
         }
+    }
+
+    pub fn set_client_info(mut self, client_info: Arc<ClientInfo>) -> Self {
+        self.client_info = client_info;
+        self
     }
 
     fn init_conn(&mut self, ctx: &mut Context<Self>) {
@@ -120,13 +134,11 @@ impl ConnManage {
 
     fn select_index(&self) -> usize {
         NamingUtils::select_by_weight_fn(&self.conns, |e| {
-            if e.breaker.is_close(){
+            if e.breaker.is_close() {
                 1000
-            }
-            else if e.breaker.is_half_open() {
+            } else if e.breaker.is_half_open() {
                 10
-            }
-            else {
+            } else {
                 1
             }
         })

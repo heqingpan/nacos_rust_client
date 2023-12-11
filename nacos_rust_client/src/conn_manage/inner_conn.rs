@@ -6,7 +6,7 @@ use tonic::transport::Channel;
 use crate::{
     client::{
         config_client::inner_client::ConfigInnerRequestClient,
-        naming_client::InnerNamingRequestClient, AuthInfo, HostInfo,
+        naming_client::InnerNamingRequestClient, ClientInfo, HostInfo,
     },
     grpc::grpc_client::InnerGrpcClient,
 };
@@ -24,10 +24,11 @@ pub(crate) struct InnerConn {
     pub breaker: Breaker,
     pub support_grpc: bool,
     pub channel: Option<Channel>,
-    pub grpc_client_addr: Option<Addr<InnerGrpcClient>>,
     pub manage_addr: Option<WeakAddr<ConnManage>>,
+    pub grpc_client_addr: Option<Addr<InnerGrpcClient>>,
     pub config_request_client: Option<Arc<ConfigInnerRequestClient>>,
     pub naming_request_client: Option<Arc<InnerNamingRequestClient>>,
+    client_info: Arc<ClientInfo>,
 }
 
 impl InnerConn {
@@ -36,6 +37,7 @@ impl InnerConn {
         host_info: HostInfo,
         support_grpc: bool,
         breaker_config: Arc<BreakerConfig>,
+        client_info: Arc<ClientInfo>,
     ) -> Self {
         Self {
             id,
@@ -48,6 +50,7 @@ impl InnerConn {
             manage_addr: None,
             config_request_client: None,
             naming_request_client: None,
+            client_info,
         }
     }
 
@@ -58,8 +61,12 @@ impl InnerConn {
                 &self.host_info.ip, &self.host_info.grpc_port
             );
             let channel = Channel::from_shared(addr)?.connect_lazy();
-            let grpc_client =
-                InnerGrpcClient::new_by_channel(self.id.to_owned(), channel.clone(), manage_addr)?;
+            let grpc_client = InnerGrpcClient::new_by_channel(
+                self.id.to_owned(),
+                channel.clone(),
+                manage_addr,
+                self.client_info.clone(),
+            )?;
             self.channel = Some(channel);
             self.grpc_client_addr = Some(grpc_client.start());
         }

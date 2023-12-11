@@ -41,7 +41,13 @@ impl ConfigClient {
     pub fn new(host: HostInfo, tenant: String) -> Arc<Self> {
         let use_grpc = false;
         let request_client = ConfigInnerRequestClient::new(host.clone());
-        let conn_manage = ConnManage::new(vec![host.clone()], use_grpc, None, Default::default());
+        let conn_manage = ConnManage::new(
+            vec![host.clone()],
+            use_grpc,
+            None,
+            Default::default(),
+            Default::default(),
+        );
         let conn_manage_addr = conn_manage.start_at_global_system();
         let (config_inner_addr, _) = Self::init_register(
             request_client.clone(),
@@ -68,6 +74,7 @@ impl ConfigClient {
             endpoint.hosts.clone(),
             use_grpc.to_owned(),
             auth_info.clone(),
+            Default::default(),
             Default::default(),
         );
         let conn_manage_addr = conn_manage.start_at_global_system();

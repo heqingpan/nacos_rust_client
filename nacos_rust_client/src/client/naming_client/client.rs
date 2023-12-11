@@ -3,6 +3,7 @@ use crate::client::nacos_client::ActixSystemActorSetCmd;
 use crate::client::nacos_client::ActixSystemCmd;
 use crate::client::nacos_client::ActixSystemResult;
 use crate::client::AuthInfo;
+use crate::client::ClientInfo;
 use crate::client::ServerEndpointInfo;
 use crate::conn_manage::manage::ConnManage;
 use crate::init_global_system_actor;
@@ -46,8 +47,13 @@ impl NamingClient {
             Err(_) => local_ipaddress::get().unwrap_or("127.0.0.1".to_owned()),
         };
         let endpoint = Arc::new(ServerEndpointInfo { hosts: vec![host] });
-        let conn_manage =
-            ConnManage::new(endpoint.hosts.clone(), use_grpc, None, Default::default());
+        let conn_manage = ConnManage::new(
+            endpoint.hosts.clone(),
+            use_grpc,
+            None,
+            Default::default(),
+            Default::default(),
+        );
         let conn_manage_addr = conn_manage.start_at_global_system();
         let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint);
         let addrs = Self::init_register(
@@ -81,6 +87,7 @@ impl NamingClient {
             endpoint.hosts.clone(),
             use_grpc,
             auth_info.clone(),
+            Default::default(),
             Default::default(),
         );
         let conn_manage_addr = conn_manage.start_at_global_system();
