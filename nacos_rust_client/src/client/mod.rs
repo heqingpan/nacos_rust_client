@@ -220,3 +220,13 @@ pub enum ProtocolMode {
     Http,
     Grpc,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_md5() {
+        assert_eq!(get_md5("hello"), String::from("5d41402abc4b2a76b9719d911017c592"));
+    }
+}
