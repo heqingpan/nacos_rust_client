@@ -10,7 +10,7 @@ pub mod utils;
 
 pub mod auth;
 
-use crypto::digest::Digest;
+use md5::{Md5, Digest};
 use serde::{Deserialize, Serialize};
 
 pub use self::builder::ClientBuilder;
@@ -34,9 +34,10 @@ pub fn now_millis() -> u64 {
 }
 
 pub fn get_md5(content: &str) -> String {
-    let mut m = crypto::md5::Md5::new();
-    m.input_str(content);
-    m.result_str()
+    let mut m = Md5::new();
+    m.update(content.as_bytes());
+
+    hex::encode(&m.finalize()[..])
 }
 
 impl HostInfo {
