@@ -136,7 +136,7 @@ impl Handler<ActixSystemCmd> for ActixSystemActor {
 }
 
 pub trait ActorCreate {
-    fn create(&self) -> ();
+    fn create(&self);
 }
 
 pub struct ActorCreateWrap<T: actix::Actor, P> {

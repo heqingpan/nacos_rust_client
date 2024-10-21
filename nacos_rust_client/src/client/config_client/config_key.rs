@@ -1,4 +1,4 @@
-#[derive(Debug, Hash, Eq, Clone, Default)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Default)]
 pub struct ConfigKey {
     pub data_id: String,
     pub group: String,
@@ -15,15 +15,17 @@ impl ConfigKey {
     }
 
     pub fn build_key(&self) -> String {
-        if self.tenant.len() == 0 {
+        if self.tenant.is_empty() {
             return format!("{}\x02{}", self.data_id, self.group);
         }
         format!("{}\x02{}\x02{}", self.data_id, self.group, self.tenant)
     }
 }
 
+/*
 impl PartialEq for ConfigKey {
     fn eq(&self, o: &Self) -> bool {
         self.data_id == o.data_id && self.group == o.group && self.tenant == self.tenant
     }
 }
+*/

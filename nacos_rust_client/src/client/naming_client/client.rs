@@ -3,7 +3,6 @@ use crate::client::nacos_client::ActixSystemActorSetCmd;
 use crate::client::nacos_client::ActixSystemCmd;
 use crate::client::nacos_client::ActixSystemResult;
 use crate::client::AuthInfo;
-use crate::client::ClientInfo;
 use crate::client::ServerEndpointInfo;
 use crate::conn_manage::manage::ConnManage;
 use crate::init_global_system_actor;

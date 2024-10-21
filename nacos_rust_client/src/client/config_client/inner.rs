@@ -62,12 +62,9 @@ impl ConfigInnerActor {
 
     fn do_change_config(&mut self, key: &ConfigKey, content: String) {
         let md5 = get_md5(&content);
-        match self.subscribe_map.get_mut(key) {
-            Some(v) => {
-                v.md5 = md5;
-                v.notify(key, &content);
-            }
-            None => {}
+        if let Some(v) = self.subscribe_map.get_mut(key) {
+            v.md5 = md5;
+            v.notify(key, &content);
         }
     }
 
@@ -76,15 +73,12 @@ impl ConfigInnerActor {
         request: ConfigRequest,
     ) -> anyhow::Result<ConfigResponse> {
         match conn_manage.send(request).await {
-            Ok(res) => {
-                let res = res as anyhow::Result<ConfigResponse>;
-                res
-            }
+            Ok(res) => res,
             _ => Err(anyhow::anyhow!("send msg to ConnManage failed")),
         }
     }
 
-    fn grpc_resubscribe(&mut self, ctx: &mut actix::Context<Self>) {
+    fn grpc_resubscribe(&mut self, _ctx: &mut actix::Context<Self>) {
         if !self.use_grpc {
             return;
         }
@@ -92,8 +86,8 @@ impl ConfigInnerActor {
             if let Some(addr) = addr.upgrade() {
                 let items = self
                     .subscribe_map
-                    .iter()
-                    .map(|(key, _)| (key.clone(), "".to_owned()))
+                    .keys()
+                    .map(|key| (key.clone(), "".to_owned()))
                     .collect::<Vec<_>>();
                 addr.do_send(ConfigRequest::Listen(items, true));
             }
@@ -110,29 +104,16 @@ impl ConfigInnerActor {
                 let mut list = vec![];
                 if let Some(addr) = conn_manage {
                     if let Some(addr) = addr.upgrade() {
-                        match Self::send(&addr, ConfigRequest::V1Listen(content.clone())).await {
-                            Ok(res) => match res {
-                                ConfigResponse::ChangeKeys(config_keys) => {
-                                    for key in config_keys {
-                                        match Self::send(
-                                            &addr,
-                                            ConfigRequest::GetConfig(key.clone()),
-                                        )
-                                        .await
-                                        {
-                                            Ok(res) => match res {
-                                                ConfigResponse::ConfigValue(value, _) => {
-                                                    list.push((key, value));
-                                                }
-                                                _ => {}
-                                            },
-                                            _ => {}
-                                        }
-                                    }
+                        if let Ok(ConfigResponse::ChangeKeys(config_keys)) =
+                            Self::send(&addr, ConfigRequest::V1Listen(content.clone())).await
+                        {
+                            for key in config_keys {
+                                if let Ok(ConfigResponse::ConfigValue(value, _)) =
+                                    Self::send(&addr, ConfigRequest::GetConfig(key.clone())).await
+                                {
+                                    list.push((key, value));
                                 }
-                                _ => {}
-                            },
-                            Err(_) => {}
+                            }
                         }
                     }
                 }
@@ -143,7 +124,7 @@ impl ConfigInnerActor {
                 for (key, context) in r {
                     this.do_change_config(&key, context)
                 }
-                if this.subscribe_map.len() > 0 {
+                if !this.subscribe_map.is_empty() {
                     ctx.run_later(Duration::from_millis(5), |act, ctx| {
                         act.listener(ctx);
                     });
@@ -155,7 +136,7 @@ impl ConfigInnerActor {
 
     fn get_listener_body(&self) -> Option<String> {
         let items = self.subscribe_map.iter().collect::<Vec<_>>();
-        if items.len() == 0 {
+        if items.is_empty() {
             return None;
         }
         let mut body = String::new();
@@ -192,12 +173,12 @@ impl Handler<ConfigInnerCmd> for ConfigInnerActor {
     fn handle(&mut self, msg: ConfigInnerCmd, ctx: &mut Context<Self>) -> Self::Result {
         match msg {
             ConfigInnerCmd::SUBSCRIBE(key, id, md5, func) => {
-                let first = self.subscribe_map.len() == 0;
+                let first = self.subscribe_map.is_empty();
                 let list = self.subscribe_map.get_mut(&key);
                 match list {
                     Some(v) => {
                         v.push(id, func);
-                        if md5.len() > 0 {
+                        if !md5.is_empty() {
                             v.md5 = md5;
                         }
                     }
@@ -224,26 +205,22 @@ impl Handler<ConfigInnerCmd> for ConfigInnerActor {
                 Ok(ConfigInnerHandleResult::None)
             }
             ConfigInnerCmd::REMOVE(key, id) => {
-                let list = self.subscribe_map.get_mut(&key);
-                match list {
-                    Some(v) => {
-                        let size = v.remove(id);
-                        if size == 0 {
-                            if let Some(_) = self.subscribe_map.remove(&key) {
-                                if self.use_grpc {
-                                    if let Some(addr) = &self.conn_manage {
-                                        if let Some(addr) = addr.upgrade() {
-                                            addr.do_send(ConfigRequest::Listen(
-                                                vec![(key.clone(), "".to_owned())],
-                                                false,
-                                            ));
-                                        }
+                if let Some(v) = self.subscribe_map.get_mut(&key) {
+                    let size = v.remove(id);
+                    if size == 0 {
+                        if self.subscribe_map.remove(&key).is_some() {
+                            if self.use_grpc {
+                                if let Some(addr) = &self.conn_manage {
+                                    if let Some(addr) = addr.upgrade() {
+                                        addr.do_send(ConfigRequest::Listen(
+                                            vec![(key.clone(), "".to_owned())],
+                                            false,
+                                        ));
                                     }
                                 }
                             }
                         }
                     }
-                    None => {}
                 };
                 Ok(ConfigInnerHandleResult::None)
             }

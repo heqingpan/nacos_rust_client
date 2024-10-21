@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{conn_manage::manage::ConnManage, init_global_system_actor};
 
@@ -15,6 +15,12 @@ pub struct ClientBuilder {
     auth_info: Option<AuthInfo>,
     use_grpc: bool,
     client_info: ClientInfo,
+}
+
+impl Default for ClientBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ClientBuilder {
@@ -138,7 +144,7 @@ impl ClientBuilder {
             tenant,
             request_client,
             config_inner_addr,
-            conn_manage_addr: conn_manage_addr,
+            conn_manage_addr,
         });
         //let system_addr = init_global_system_actor();
         system_addr.do_send(ActixSystemActorSetCmd::LastConfigClient(

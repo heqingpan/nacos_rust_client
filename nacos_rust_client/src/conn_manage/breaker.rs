@@ -1,3 +1,4 @@
+#![allow(unused_variables, dead_code)]
 use std::sync::Arc;
 
 use crate::client::now_millis;

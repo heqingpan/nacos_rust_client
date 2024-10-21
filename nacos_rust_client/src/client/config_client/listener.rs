@@ -28,7 +28,7 @@ impl ListenerItem {
                 start = i + 1;
             } else if char == 1 {
                 let mut end_value = String::new();
-                if start + 1 <= i {
+                if start < i {
                     //endValue = configs[start..i].to_owned();
                     end_value = String::from_utf8(configs[start..i].into()).unwrap();
                 }
@@ -62,7 +62,7 @@ impl ListenerItem {
                 start = i + 1;
             } else if char == 1 {
                 let mut end_value = String::new();
-                if start + 1 <= i {
+                if start < i {
                     //endValue = configs[start..i].to_owned();
                     end_value = String::from_utf8(configs[start..i].into()).unwrap();
                 }
@@ -83,7 +83,7 @@ impl ListenerItem {
 
 pub trait ConfigListener {
     fn get_key(&self) -> ConfigKey;
-    fn change(&self, key: &ConfigKey, value: &str) -> ();
+    fn change(&self, key: &ConfigKey, value: &str);
 }
 
 #[derive(Clone)]
@@ -120,14 +120,13 @@ impl<T> ConfigListener for ConfigDefaultListener<T> {
         self.key.clone()
     }
 
-    fn change(&self, key: &ConfigKey, value: &str) -> () {
+    fn change(&self, key: &ConfigKey, value: &str) {
         log::debug!("ConfigDefaultListener change:{:?},{}", key, value);
         let content = self.content.clone();
         let convert = self.convert.as_ref();
         if let Some(value) = convert(value) {
             Self::set_value(content, value);
         }
-        ()
     }
 }
 

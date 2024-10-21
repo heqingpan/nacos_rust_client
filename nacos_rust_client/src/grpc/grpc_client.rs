@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use actix::{prelude::*, WeakAddr};
 use tokio_stream::StreamExt;
@@ -434,7 +434,7 @@ impl Handler<InnerGrpcClientCmd> for InnerGrpcClient {
 
     fn handle(&mut self, msg: InnerGrpcClientCmd, ctx: &mut Self::Context) -> Self::Result {
         match msg {
-            InnerGrpcClientCmd::ReceiverStreamItem(payload) => Ok(InnerGrpcClientResult::None),
+            InnerGrpcClientCmd::ReceiverStreamItem(_payload) => Ok(InnerGrpcClientResult::None),
             InnerGrpcClientCmd::Ping => Ok(InnerGrpcClientResult::None),
             InnerGrpcClientCmd::Request(payload, sender) => {
                 self.do_request(ctx, payload, sender);
@@ -447,7 +447,7 @@ impl Handler<InnerGrpcClientCmd> for InnerGrpcClient {
 impl Handler<ConfigRequest> for InnerGrpcClient {
     type Result = ResponseActFuture<Self, anyhow::Result<ConfigResponse>>;
 
-    fn handle(&mut self, config_request: ConfigRequest, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, config_request: ConfigRequest, _ctx: &mut Self::Context) -> Self::Result {
         let channel = self.channel.clone();
         let manage_addr = self.manage_addr.clone();
         let conn_reader = self.conn_reader;
@@ -541,7 +541,7 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
 impl Handler<NamingRequest> for InnerGrpcClient {
     type Result = ResponseActFuture<Self, anyhow::Result<NamingResponse>>;
 
-    fn handle(&mut self, request: NamingRequest, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, request: NamingRequest, _ctx: &mut Self::Context) -> Self::Result {
         let channel = self.channel.clone();
         let conn_reader = self.conn_reader;
         let manage_addr = self.manage_addr.clone();
@@ -617,7 +617,7 @@ impl Handler<NamingRequest> for InnerGrpcClient {
             //Ok(NamingResponse::None)
         }
         .into_actor(self)
-        .map(|r, act, ctx| r);
+        .map(|r, _act, _ctx| r);
         Box::pin(fut)
     }
 }

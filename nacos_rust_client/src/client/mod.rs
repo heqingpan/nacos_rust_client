@@ -10,7 +10,7 @@ pub mod utils;
 
 pub mod auth;
 
-use md5::{Md5, Digest};
+use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 
 pub use self::builder::ClientBuilder;
@@ -157,7 +157,7 @@ impl ServerEndpointInfo {
         if hosts.len() == 0 {
             hosts.push(HostInfo::parse("127.0.0.1:8848"));
         }
-        Self { hosts: hosts }
+        Self { hosts }
     }
 
     pub fn select_host(&self) -> &HostInfo {
@@ -227,6 +227,9 @@ mod tests {
 
     #[test]
     fn test_md5() {
-        assert_eq!(get_md5("hello"), String::from("5d41402abc4b2a76b9719d911017c592"));
+        assert_eq!(
+            get_md5("hello"),
+            String::from("5d41402abc4b2a76b9719d911017c592")
+        );
     }
 }

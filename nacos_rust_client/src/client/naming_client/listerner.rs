@@ -30,7 +30,7 @@ pub trait InstanceListener {
         value: &InstanceListenerValue,
         add_list: &InstanceListenerValue,
         remove_list: &InstanceListenerValue,
-    ) -> ();
+    );
 }
 
 #[derive(Clone)]
@@ -39,7 +39,7 @@ pub struct InstanceDefaultListener {
     pub content: Arc<std::sync::RwLock<Option<Arc<Vec<Arc<Instance>>>>>>,
     pub callback: Option<
         Arc<
-            dyn Fn(Arc<InstanceListenerValue>, InstanceListenerValue, InstanceListenerValue) -> ()
+            dyn Fn(Arc<InstanceListenerValue>, InstanceListenerValue, InstanceListenerValue)
                 + Send
                 + Sync,
         >,
@@ -51,11 +51,7 @@ impl InstanceDefaultListener {
         key: ServiceInstanceKey,
         callback: Option<
             Arc<
-                dyn Fn(
-                        Arc<InstanceListenerValue>,
-                        InstanceListenerValue,
-                        InstanceListenerValue,
-                    ) -> ()
+                dyn Fn(Arc<InstanceListenerValue>, InstanceListenerValue, InstanceListenerValue)
                     + Send
                     + Sync,
             >,
@@ -95,7 +91,7 @@ impl InstanceListener for InstanceDefaultListener {
         value: &Vec<Arc<Instance>>,
         add: &Vec<Arc<Instance>>,
         remove: &Vec<Arc<Instance>>,
-    ) -> () {
+    ) {
         log::debug!(
             "InstanceDefaultListener change,key{:?},valid count:{},add count:{},remove count:{}",
             key,
@@ -167,7 +163,7 @@ impl InnerNamingListener {
             conn_manage,
             period: 3000,
             client_ip: client_ip.to_owned(),
-            udp_port: udp_port,
+            udp_port,
             udp_addr,
             use_grpc,
         }

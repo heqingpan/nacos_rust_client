@@ -54,7 +54,7 @@ impl Utils {
         Ok(ResponseWrap {
             status,
             headers: resp_headers,
-            body: body,
+            body,
         })
     }
 

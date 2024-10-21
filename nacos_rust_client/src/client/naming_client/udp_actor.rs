@@ -32,7 +32,7 @@ impl UdpWorker {
         Self {
             local_addr_str: None,
             socket: Some(Arc::new(socket)),
-            addr: addr,
+            addr,
             udp_port,
             buf: Some(vec![]),
         }
@@ -83,7 +83,7 @@ impl UdpWorker {
                     let mut data: Vec<u8> = vec![0u8; len];
                     data.clone_from_slice(&buf[..len]);
                     let msg = UdpDataCmd {
-                        data: data,
+                        data,
                         target_addr: addr,
                     };
                     //let s=String::from_utf8_lossy(&buf[..len]);

@@ -1,3 +1,4 @@
+#![allow(unused_variables, dead_code)]
 use std::sync::Arc;
 
 use actix::{Addr, WeakAddr};
@@ -60,7 +61,7 @@ impl ConfigClient {
             tenant,
             request_client,
             config_inner_addr,
-            conn_manage_addr: conn_manage_addr,
+            conn_manage_addr,
         });
         let system_addr = init_global_system_actor();
         system_addr.do_send(ActixSystemActorSetCmd::LastConfigClient(r.clone()));
@@ -90,7 +91,7 @@ impl ConfigClient {
             tenant,
             request_client,
             config_inner_addr,
-            conn_manage_addr: conn_manage_addr,
+            conn_manage_addr,
         });
         let system_addr = init_global_system_actor();
         system_addr.do_send(ActixSystemActorSetCmd::LastConfigClient(r.clone()));

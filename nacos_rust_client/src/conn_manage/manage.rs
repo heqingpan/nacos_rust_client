@@ -34,12 +34,12 @@ use super::{
 #[derive(Default, Clone)]
 pub struct ConnManage {
     conns: Vec<InnerConn>,
-    conn_map: HashMap<u32, u32>,
+    _conn_map: HashMap<u32, u32>,
     current_index: usize,
     support_grpc: bool,
     auth_info: Option<AuthInfo>,
-    conn_globda_id: u32,
-    breaker_config: Arc<BreakerConfig>,
+    _conn_globda_id: u32,
+    _breaker_config: Arc<BreakerConfig>,
     pub(crate) callback: NotifyCallbackAddr,
     reconnecting: bool,
     client_info: Arc<ClientInfo>,
@@ -72,11 +72,11 @@ impl ConnManage {
         }
         Self {
             conns,
-            conn_map,
+            _conn_map: conn_map,
             support_grpc,
             auth_info,
-            conn_globda_id: id,
-            breaker_config,
+            _conn_globda_id: id,
+            _breaker_config: breaker_config,
             client_info,
             ..Default::default()
         }
@@ -229,31 +229,29 @@ impl ConnManage {
             } else {
                 Err(anyhow::anyhow!("grpc conn is empty"))
             }
-        } else {
-            if let Some(config_client) = config_client {
-                match msg {
-                    ConfigRequest::GetConfig(config_key) => {
-                        let value = config_client.get_config(&config_key).await?;
-                        let md5 = get_md5(&value);
-                        Ok(ConfigResponse::ConfigValue(value, md5))
-                    }
-                    ConfigRequest::SetConfig(config_key, value) => {
-                        config_client.set_config(&config_key, &value).await?;
-                        Ok(ConfigResponse::None)
-                    }
-                    ConfigRequest::DeleteConfig(config_key) => {
-                        config_client.del_config(&config_key).await?;
-                        Ok(ConfigResponse::None)
-                    }
-                    ConfigRequest::V1Listen(content) => {
-                        let config_keys = config_client.listene(&content, None).await?;
-                        Ok(ConfigResponse::ChangeKeys(config_keys))
-                    }
-                    ConfigRequest::Listen(_, _) => Err(anyhow::anyhow!("http not support")),
+        } else if let Some(config_client) = config_client {
+            match msg {
+                ConfigRequest::GetConfig(config_key) => {
+                    let value = config_client.get_config(&config_key).await?;
+                    let md5 = get_md5(&value);
+                    Ok(ConfigResponse::ConfigValue(value, md5))
                 }
-            } else {
-                Err(anyhow::anyhow!("config client is empty"))
+                ConfigRequest::SetConfig(config_key, value) => {
+                    config_client.set_config(&config_key, &value).await?;
+                    Ok(ConfigResponse::None)
+                }
+                ConfigRequest::DeleteConfig(config_key) => {
+                    config_client.del_config(&config_key).await?;
+                    Ok(ConfigResponse::None)
+                }
+                ConfigRequest::V1Listen(content) => {
+                    let config_keys = config_client.listene(&content, None).await?;
+                    Ok(ConfigResponse::ChangeKeys(config_keys))
+                }
+                ConfigRequest::Listen(_, _) => Err(anyhow::anyhow!("http not support")),
             }
+        } else {
+            Err(anyhow::anyhow!("config client is empty"))
         }
     }
 
@@ -270,50 +268,46 @@ impl ConnManage {
             } else {
                 Err(anyhow::anyhow!("grpc conn is empty"))
             }
-        } else {
-            if let Some(naming_client) = naming_client {
-                match msg {
-                    NamingRequest::Register(instance) => {
-                        naming_client.register(&instance).await?;
-                        Ok(NamingResponse::None)
-                    }
-                    NamingRequest::Unregister(instance) => {
-                        naming_client.remove(&instance).await?;
-                        Ok(NamingResponse::None)
-                    }
-                    NamingRequest::BatchRegister(_) => Err(anyhow::anyhow!("http not support")),
-                    NamingRequest::Subscribe(_) => Err(anyhow::anyhow!("http not support")),
-                    NamingRequest::Unsubscribe(_) => Err(anyhow::anyhow!("http not support")),
-                    NamingRequest::QueryInstance(param) => {
-                        let result = naming_client.get_instance_list(&param).await?;
-                        let hosts = result
-                            .hosts
-                            .unwrap_or_default()
-                            .into_iter()
-                            .map(|e| Arc::new(e.to_instance()))
-                            .collect();
-                        let service_result = ServiceResult {
-                            hosts,
-                            cache_millis: result.cache_millis,
-                        };
-                        Ok(NamingResponse::ServiceResult(service_result))
-                    }
-                    NamingRequest::V1Heartbeat(heartbeat) => {
-                        naming_client.heartbeat(heartbeat).await?;
-                        Ok(NamingResponse::None)
-                    }
+        } else if let Some(naming_client) = naming_client {
+            match msg {
+                NamingRequest::Register(instance) => {
+                    naming_client.register(&instance).await?;
+                    Ok(NamingResponse::None)
                 }
-            } else {
-                Err(anyhow::anyhow!("naming client is empty"))
+                NamingRequest::Unregister(instance) => {
+                    naming_client.remove(&instance).await?;
+                    Ok(NamingResponse::None)
+                }
+                NamingRequest::BatchRegister(_) => Err(anyhow::anyhow!("http not support")),
+                NamingRequest::Subscribe(_) => Err(anyhow::anyhow!("http not support")),
+                NamingRequest::Unsubscribe(_) => Err(anyhow::anyhow!("http not support")),
+                NamingRequest::QueryInstance(param) => {
+                    let result = naming_client.get_instance_list(&param).await?;
+                    let hosts = result
+                        .hosts
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|e| Arc::new(e.to_instance()))
+                        .collect();
+                    let service_result = ServiceResult {
+                        hosts,
+                        cache_millis: result.cache_millis,
+                    };
+                    Ok(NamingResponse::ServiceResult(service_result))
+                }
+                NamingRequest::V1Heartbeat(heartbeat) => {
+                    naming_client.heartbeat(heartbeat).await?;
+                    Ok(NamingResponse::None)
+                }
             }
+        } else {
+            Err(anyhow::anyhow!("naming client is empty"))
         }
     }
 }
 
 impl ActorCreate for ConnManage {
-    fn create(&self) -> () {
-        ()
-    }
+    fn create(&self) {}
 }
 
 impl Actor for ConnManage {
@@ -413,7 +407,7 @@ impl Handler<ConfigRequest> for ConnManage {
 impl Handler<NamingRequest> for ConnManage {
     type Result = ResponseActFuture<Self, anyhow::Result<NamingResponse>>;
 
-    fn handle(&mut self, msg: NamingRequest, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: NamingRequest, _ctx: &mut Self::Context) -> Self::Result {
         let conn = self.conns.get(self.current_index).unwrap();
         let conn_addr = conn.grpc_client_addr.clone();
         let support_grpc = self.support_grpc;

@@ -219,7 +219,7 @@ impl QueryInstanceListParams {
             namespace_id: namespace_id.to_owned(),
             group_name: group_name.to_owned(),
             service_name: service_name.to_owned(),
-            clusters: clusters,
+            clusters,
             healthy_only,
             client_ip: None,
             udp_port: None,
