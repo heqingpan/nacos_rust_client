@@ -1,12 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{conn_manage::manage::ConnManage, init_global_system_actor};
-
 use super::{
     config_client::inner_client::ConfigInnerRequestClient, nacos_client::ActixSystemActorSetCmd,
     naming_client::InnerNamingRequestClient, AuthInfo, ClientInfo, ConfigClient, HostInfo,
     NamingClient, ServerEndpointInfo,
 };
+use crate::client::auth::AuthActor;
+use crate::{conn_manage::manage::ConnManage, init_global_system_actor};
 
 #[derive(Clone, Debug)]
 pub struct ClientBuilder {
@@ -102,6 +102,7 @@ impl ClientBuilder {
         let namespace_id = self.tenant.clone();
         let tenant = self.tenant;
         let current_ip = self.client_info.client_ip.clone();
+        let auth_actor = AuthActor::init_auth_actor(endpoint.clone(), auth_info.clone());
 
         let conn_manage = ConnManage::new(
             endpoint.hosts.clone(),
@@ -109,14 +110,15 @@ impl ClientBuilder {
             auth_info.clone(),
             Default::default(),
             Arc::new(self.client_info),
+            auth_actor.clone(),
         );
         let conn_manage_addr = conn_manage.start_at_global_system();
-        let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint.clone());
+        let request_client =
+            InnerNamingRequestClient::new_with_endpoint(endpoint.clone(), Some(auth_actor.clone()));
         let addrs = NamingClient::init_register(
             namespace_id.clone(),
             current_ip.clone(),
             request_client,
-            auth_info.clone(),
             Some(conn_manage_addr.clone().downgrade()),
             use_grpc,
         );
@@ -132,14 +134,13 @@ impl ClientBuilder {
             naming_client.clone(),
         ));
 
-        let mut request_client = ConfigInnerRequestClient::new_with_endpoint(endpoint);
-        let (config_inner_addr, auth_addr) = ConfigClient::init_register(
+        let request_client =
+            ConfigInnerRequestClient::new_with_endpoint(endpoint, Some(auth_actor.clone()));
+        let config_inner_addr = ConfigClient::init_register(
             request_client.clone(),
-            auth_info,
             Some(conn_manage_addr.clone().downgrade()),
             use_grpc,
         );
-        request_client.set_auth_addr(auth_addr);
         let config_client = Arc::new(ConfigClient {
             tenant,
             request_client,

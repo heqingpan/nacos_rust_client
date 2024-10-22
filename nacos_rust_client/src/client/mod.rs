@@ -214,6 +214,16 @@ impl Client {
         let token = serde_json::from_str(&text)?;
         Ok(token)
     }
+
+    pub(crate) fn build_http_headers() -> HashMap<String, String> {
+        let mut headers = HashMap::new();
+        headers.insert(
+            "Content-Type".to_owned(),
+            "application/x-www-form-urlencoded".to_owned(),
+        );
+        headers.insert("User-Agent".to_owned(), "nacos-rust-client 0.3".to_owned());
+        headers
+    }
 }
 
 pub enum ProtocolMode {

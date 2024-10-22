@@ -34,7 +34,7 @@ pub struct NamingClient {
 impl Drop for NamingClient {
     fn drop(&mut self) {
         self.droping();
-        std::thread::sleep(utils::ms(500));
+        //std::thread::sleep(utils::ms(50));
     }
 }
 
@@ -46,20 +46,22 @@ impl NamingClient {
             Err(_) => local_ipaddress::get().unwrap_or("127.0.0.1".to_owned()),
         };
         let endpoint = Arc::new(ServerEndpointInfo { hosts: vec![host] });
+        let auth_actor = AuthActor::init_auth_actor(endpoint.clone(), None);
         let conn_manage = ConnManage::new(
             endpoint.hosts.clone(),
             use_grpc,
             None,
             Default::default(),
             Default::default(),
+            auth_actor.clone(),
         );
         let conn_manage_addr = conn_manage.start_at_global_system();
-        let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint);
+        let request_client =
+            InnerNamingRequestClient::new_with_endpoint(endpoint, Some(auth_actor.clone()));
         let addrs = Self::init_register(
             namespace_id.clone(),
             current_ip.clone(),
             request_client,
-            None,
             Some(conn_manage_addr.clone().downgrade()),
             use_grpc,
         );
@@ -82,15 +84,18 @@ impl NamingClient {
     ) -> Arc<Self> {
         let use_grpc = false;
         let endpoint = Arc::new(ServerEndpointInfo::new(addrs));
+        let auth_actor = AuthActor::init_auth_actor(endpoint.clone(), auth_info.clone());
         let conn_manage = ConnManage::new(
             endpoint.hosts.clone(),
             use_grpc,
             auth_info.clone(),
             Default::default(),
             Default::default(),
+            auth_actor.clone(),
         );
         let conn_manage_addr = conn_manage.start_at_global_system();
-        let request_client = InnerNamingRequestClient::new_with_endpoint(endpoint);
+        let request_client =
+            InnerNamingRequestClient::new_with_endpoint(endpoint, Some(auth_actor.clone()));
         let current_ip = match env::var("NACOS_CLIENT_IP") {
             Ok(v) => v,
             Err(_) => local_ipaddress::get().unwrap_or("127.0.0.1".to_owned()),
@@ -99,7 +104,6 @@ impl NamingClient {
             namespace_id.clone(),
             current_ip.clone(),
             request_client,
-            auth_info,
             Some(conn_manage_addr.clone().downgrade()),
             use_grpc,
         );
@@ -118,22 +122,11 @@ impl NamingClient {
     pub(crate) fn init_register(
         namespace_id: String,
         client_ip: String,
-        mut request_client: InnerNamingRequestClient,
-        auth_info: Option<AuthInfo>,
+        request_client: InnerNamingRequestClient,
         conn_manage_addr: Option<WeakAddr<ConnManage>>,
         use_grpc: bool,
     ) -> (Addr<InnerNamingRegister>, Addr<InnerNamingListener>) {
         let system_addr = init_global_system_actor();
-        let endpoint = request_client.endpoints.clone();
-        let actor = AuthActor::new(endpoint, auth_info);
-        let (tx, rx) = std::sync::mpsc::sync_channel(1);
-        let msg = ActixSystemCmd::AuthActor(actor, tx);
-        system_addr.do_send(msg);
-        let auth_addr = match rx.recv().unwrap() {
-            ActixSystemResult::AuthActorAddr(auth_addr) => auth_addr,
-            _ => panic!("init actor error"),
-        };
-        request_client.set_auth_addr(auth_addr);
 
         let actor = InnerNamingRegister::new(use_grpc, conn_manage_addr.clone());
         let (tx, rx) = std::sync::mpsc::sync_channel(1);

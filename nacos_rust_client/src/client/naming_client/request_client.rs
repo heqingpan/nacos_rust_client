@@ -1,12 +1,12 @@
+use crate::client;
 use crate::client::auth::{AuthActor, AuthCmd, AuthHandleResult};
 use crate::client::naming_client::Instance;
 use crate::client::naming_client::QueryInstanceListParams;
 use crate::client::naming_client::QueryListResult;
 use crate::client::utils::Utils;
+use crate::client::ServerEndpointInfo;
 use actix::Addr;
 use std::{collections::HashMap, sync::Arc};
-
-use crate::client::ServerEndpointInfo;
 
 #[derive(Clone)]
 pub struct InnerNamingRequestClient {
@@ -35,18 +35,16 @@ impl InnerNamingRequestClient {
     }
     */
 
-    pub(crate) fn new_with_endpoint(endpoints: Arc<ServerEndpointInfo>) -> Self {
+    pub(crate) fn new_with_endpoint(
+        endpoints: Arc<ServerEndpointInfo>,
+        auth_addr: Option<Addr<AuthActor>>,
+    ) -> Self {
         let client = reqwest::Client::builder().build().unwrap();
-        let mut headers = HashMap::new();
-        headers.insert(
-            "Content-Type".to_owned(),
-            "application/x-www-form-urlencoded".to_owned(),
-        );
         Self {
             endpoints,
             client,
-            headers,
-            auth_addr: None,
+            headers: client::Client::build_http_headers(),
+            auth_addr,
         }
     }
 

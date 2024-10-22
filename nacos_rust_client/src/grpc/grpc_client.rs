@@ -4,6 +4,16 @@ use actix::{prelude::*, WeakAddr};
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 
+use super::{
+    api_model::{ConfigChangeNotifyRequest, NotifySubscriberRequest},
+    config_request_utils::GrpcConfigRequestUtils,
+    constant::*,
+    nacos_proto::{
+        bi_request_stream_client::BiRequestStreamClient, request_client::RequestClient, Payload,
+    },
+    naming_request_utils::GrpcNamingRequestUtils,
+};
+use crate::client::auth::AuthActor;
 use crate::{
     client::{config_client::ConfigKey, naming_client::ServiceInstanceKey, ClientInfo},
     conn_manage::{
@@ -18,16 +28,6 @@ use crate::{
         channel::CloseableChannel,
         utils::PayloadUtils,
     },
-};
-
-use super::{
-    api_model::{ConfigChangeNotifyRequest, NotifySubscriberRequest},
-    config_request_utils::GrpcConfigRequestUtils,
-    constant::*,
-    nacos_proto::{
-        bi_request_stream_client::BiRequestStreamClient, request_client::RequestClient, Payload,
-    },
-    naming_request_utils::GrpcNamingRequestUtils,
 };
 
 //type SenderType = tokio::sync::mpsc::Sender<Result<Payload, tonic::Status>>;
@@ -48,6 +48,7 @@ pub struct InnerGrpcClient {
     request_id: u64,
     error_time: u8,
     client_info: Arc<ClientInfo>,
+    auth_addr: Addr<AuthActor>,
 }
 
 impl InnerGrpcClient {
@@ -56,9 +57,10 @@ impl InnerGrpcClient {
         addr: String,
         manage_addr: WeakAddr<ConnManage>,
         client_info: Arc<ClientInfo>,
+        auth_addr: Addr<AuthActor>,
     ) -> anyhow::Result<Self> {
         let channel = Channel::from_shared(addr)?.connect_lazy();
-        Self::new_by_channel(id, channel, manage_addr, client_info)
+        Self::new_by_channel(id, channel, manage_addr, client_info, auth_addr)
     }
 
     pub fn new_by_channel(
@@ -66,6 +68,7 @@ impl InnerGrpcClient {
         channel: Channel,
         manage_addr: WeakAddr<ConnManage>,
         client_info: Arc<ClientInfo>,
+        auth_addr: Addr<AuthActor>,
     ) -> anyhow::Result<Self> {
         //let bi_request_stream_client = BiRequestStreamClient::new(channel.clone());
         //let request_client = RequestClient::new(channel.clone());
@@ -81,6 +84,7 @@ impl InnerGrpcClient {
             request_id: 0,
             error_time: 0,
             client_info,
+            auth_addr,
         })
     }
 
@@ -138,9 +142,17 @@ impl InnerGrpcClient {
 
     fn wait_check_register(&mut self, ctx: &mut Context<Self>) {
         let channel = self.channel.clone();
+        let auth_addr = self.auth_addr.clone();
+        let client_info = self.client_info.clone();
         async move {
             for _ in 0..100 {
-                match GrpcConfigRequestUtils::check_register(channel.clone()).await {
+                match GrpcConfigRequestUtils::check_register(
+                    channel.clone(),
+                    auth_addr.clone(),
+                    client_info.clone(),
+                )
+                .await
+                {
                     Ok(r) => {
                         if r {
                             return true;
@@ -211,12 +223,19 @@ impl InnerGrpcClient {
         request_id: String,
         manage_addr: &WeakAddr<ConnManage>,
         config_key: ConfigKey,
+        auth_addr: Addr<AuthActor>,
+        client_info: Arc<ClientInfo>,
     ) -> anyhow::Result<()> {
         //debug
         //log::info!( "config change notify:{}#{}#{}", &config_key.data_id, &config_key.group, &config_key.tenant);
-        if let ConfigResponse::ConfigValue(content, md5) =
-            GrpcConfigRequestUtils::config_query(channel, Some(request_id), config_key.clone())
-                .await?
+        if let ConfigResponse::ConfigValue(content, md5) = GrpcConfigRequestUtils::config_query(
+            channel,
+            Some(request_id),
+            config_key.clone(),
+            auth_addr,
+            client_info,
+        )
+        .await?
         {
             let msg = ConnCallbackMsg::ConfigChange(config_key, content, md5);
             if let Some(addr) = manage_addr.upgrade() {
@@ -235,6 +254,8 @@ impl InnerGrpcClient {
         let channel = self.channel.clone();
         let tx = self.stream_sender.clone().unwrap();
         let manage_addr = self.manage_addr.clone();
+        let auth_addr = self.auth_addr.clone();
+        let client_info = self.client_info.clone();
         async move {
             let mut stream_id = 0u128;
             while let Some(item) = receiver_stream.next().await {
@@ -258,6 +279,8 @@ impl InnerGrpcClient {
                                         request_id,
                                         &manage_addr,
                                         config_key,
+                                        auth_addr.clone(),
+                                        client_info.clone(),
                                     )
                                     .await
                                     .ok();
@@ -452,6 +475,8 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
         let manage_addr = self.manage_addr.clone();
         let conn_reader = self.conn_reader;
         let request_id = self.next_request_id();
+        let auth_addr = self.auth_addr.clone();
+        let client_info = self.client_info.clone();
         let fut = async move {
             if !conn_reader {
                 //等链接确认后再请求
@@ -464,6 +489,8 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
                         channel,
                         Some(request_id),
                         config_key,
+                        auth_addr,
+                        client_info,
                     )
                     .await;
                 }
@@ -473,6 +500,8 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
                         Some(request_id),
                         config_key.clone(),
                         content,
+                        auth_addr,
+                        client_info,
                     )
                     .await;
                     /*
@@ -491,6 +520,8 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
                         channel.clone(),
                         Some(request_id),
                         config_key.clone(),
+                        auth_addr,
+                        client_info,
                     )
                     .await;
                     /*
@@ -514,6 +545,8 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
                         Some(request_id),
                         listen_items,
                         listen,
+                        auth_addr.clone(),
+                        client_info.clone(),
                     )
                     .await?;
                     if let ConfigResponse::ChangeKeys(keys) = res {
@@ -523,6 +556,8 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
                                 config_key.build_key(),
                                 &manage_addr,
                                 config_key,
+                                auth_addr.clone(),
+                                client_info.clone(),
                             )
                             .await
                             .ok();
@@ -545,6 +580,8 @@ impl Handler<NamingRequest> for InnerGrpcClient {
         let channel = self.channel.clone();
         let conn_reader = self.conn_reader;
         let manage_addr = self.manage_addr.clone();
+        let auth_addr = self.auth_addr.clone();
+        let client_info = self.client_info.clone();
         let fut = async move {
             if !conn_reader {
                 //等链接确认后再请求
@@ -553,13 +590,33 @@ impl Handler<NamingRequest> for InnerGrpcClient {
             }
             match request {
                 NamingRequest::Register(instance) => {
-                    GrpcNamingRequestUtils::instance_register(channel, instance, true).await
+                    GrpcNamingRequestUtils::instance_register(
+                        channel,
+                        instance,
+                        true,
+                        auth_addr,
+                        client_info,
+                    )
+                    .await
                 }
                 NamingRequest::Unregister(instance) => {
-                    GrpcNamingRequestUtils::instance_register(channel, instance, false).await
+                    GrpcNamingRequestUtils::instance_register(
+                        channel,
+                        instance,
+                        false,
+                        auth_addr,
+                        client_info,
+                    )
+                    .await
                 }
                 NamingRequest::BatchRegister(instances) => {
-                    GrpcNamingRequestUtils::batch_register(channel, instances).await
+                    GrpcNamingRequestUtils::batch_register(
+                        channel,
+                        instances,
+                        auth_addr,
+                        client_info,
+                    )
+                    .await
                 }
                 NamingRequest::Subscribe(service_keys) => {
                     let mut res = Ok(NamingResponse::None);
@@ -569,6 +626,8 @@ impl Handler<NamingRequest> for InnerGrpcClient {
                             service_key.clone(),
                             true,
                             Some("".to_owned()),
+                            auth_addr.clone(),
+                            client_info.clone(),
                         )
                         .await;
                         if let Ok(res) = &res {
@@ -592,6 +651,8 @@ impl Handler<NamingRequest> for InnerGrpcClient {
                             service_key,
                             false,
                             Some("".to_owned()),
+                            auth_addr.clone(),
+                            client_info.clone(),
                         )
                         .await;
                     }
@@ -609,6 +670,8 @@ impl Handler<NamingRequest> for InnerGrpcClient {
                         service_key,
                         clusters,
                         Some(param.healthy_only),
+                        auth_addr,
+                        client_info,
                     )
                     .await
                 }

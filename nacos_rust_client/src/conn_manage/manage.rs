@@ -31,7 +31,7 @@ use super::{
     NotifyCallbackAddr,
 };
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct ConnManage {
     conns: Vec<InnerConn>,
     _conn_map: HashMap<u32, u32>,
@@ -43,6 +43,7 @@ pub struct ConnManage {
     pub(crate) callback: NotifyCallbackAddr,
     reconnecting: bool,
     client_info: Arc<ClientInfo>,
+    auth_addr: Addr<AuthActor>,
 }
 
 impl ConnManage {
@@ -52,6 +53,7 @@ impl ConnManage {
         auth_info: Option<AuthInfo>,
         breaker_config: BreakerConfig,
         client_info: Arc<ClientInfo>,
+        auth_addr: Addr<AuthActor>,
     ) -> Self {
         assert!(hosts.len() > 0);
         let mut id = 0;
@@ -65,6 +67,7 @@ impl ConnManage {
                 support_grpc,
                 breaker_config.clone(),
                 client_info.clone(),
+                auth_addr.clone(),
             );
             conn_map.insert(id, id);
             id += 1;
@@ -73,12 +76,15 @@ impl ConnManage {
         Self {
             conns,
             _conn_map: conn_map,
+            current_index: 0,
             support_grpc,
             auth_info,
             _conn_globda_id: id,
             _breaker_config: breaker_config,
+            callback: Default::default(),
+            reconnecting: false,
             client_info,
-            ..Default::default()
+            auth_addr,
         }
     }
 
@@ -111,11 +117,15 @@ impl ConnManage {
         let auth_actor = AuthActor::new(endpoints.clone(), auth_info.clone());
         let auth_actor_addr = auth_actor.start();
         //config http
-        let mut config_client = ConfigInnerRequestClient::new_with_endpoint(endpoints.clone());
+        let mut config_client = ConfigInnerRequestClient::new_with_endpoint(
+            endpoints.clone(),
+            Some(conn.auth_addr.clone()),
+        );
         config_client.set_auth_addr(auth_actor_addr.clone());
         conn.config_request_client = Some(Arc::new(config_client));
         //naming http
-        let mut naming_client = InnerNamingRequestClient::new_with_endpoint(endpoints);
+        let mut naming_client =
+            InnerNamingRequestClient::new_with_endpoint(endpoints, Some(conn.auth_addr.clone()));
         naming_client.set_auth_addr(auth_actor_addr);
         conn.naming_request_client = Some(Arc::new(naming_client));
     }

@@ -3,6 +3,13 @@ use std::sync::Arc;
 
 use actix::{Addr, WeakAddr};
 
+use super::{
+    config_key::ConfigKey,
+    inner::{ConfigInnerActor, ConfigInnerCmd},
+    inner_client::ConfigInnerRequestClient,
+    listener::ConfigListener,
+};
+use crate::client::naming_client::InnerNamingRequestClient;
 use crate::{
     client::{
         auth::AuthActor,
@@ -15,13 +22,6 @@ use crate::{
         manage::ConnManage,
     },
     init_global_system_actor,
-};
-
-use super::{
-    config_key::ConfigKey,
-    inner::{ConfigInnerActor, ConfigInnerCmd},
-    inner_client::ConfigInnerRequestClient,
-    listener::ConfigListener,
 };
 
 pub struct ConfigClient {
@@ -41,18 +41,23 @@ impl Drop for ConfigClient {
 impl ConfigClient {
     pub fn new(host: HostInfo, tenant: String) -> Arc<Self> {
         let use_grpc = false;
-        let request_client = ConfigInnerRequestClient::new(host.clone());
+        let endpoint = Arc::new(ServerEndpointInfo {
+            hosts: vec![host.clone()],
+        });
+        let auth_actor = AuthActor::init_auth_actor(endpoint.clone(), None);
         let conn_manage = ConnManage::new(
             vec![host.clone()],
             use_grpc,
             None,
             Default::default(),
             Default::default(),
+            auth_actor.clone(),
         );
         let conn_manage_addr = conn_manage.start_at_global_system();
-        let (config_inner_addr, _) = Self::init_register(
+        let request_client =
+            ConfigInnerRequestClient::new_with_endpoint(endpoint, Some(auth_actor.clone()));
+        let config_inner_addr = Self::init_register(
             request_client.clone(),
-            None,
             Some(conn_manage_addr.clone().downgrade()),
             use_grpc,
         );
@@ -71,22 +76,23 @@ impl ConfigClient {
     pub fn new_with_addrs(addrs: &str, tenant: String, auth_info: Option<AuthInfo>) -> Arc<Self> {
         let use_grpc = false;
         let endpoint = Arc::new(ServerEndpointInfo::new(addrs));
+        let auth_actor = AuthActor::init_auth_actor(endpoint.clone(), auth_info.clone());
         let conn_manage = ConnManage::new(
             endpoint.hosts.clone(),
             use_grpc.to_owned(),
             auth_info.clone(),
             Default::default(),
             Default::default(),
+            auth_actor.clone(),
         );
         let conn_manage_addr = conn_manage.start_at_global_system();
-        let mut request_client = ConfigInnerRequestClient::new_with_endpoint(endpoint);
-        let (config_inner_addr, auth_addr) = Self::init_register(
+        let mut request_client =
+            ConfigInnerRequestClient::new_with_endpoint(endpoint, Some(auth_actor));
+        let config_inner_addr = Self::init_register(
             request_client.clone(),
-            auth_info,
             Some(conn_manage_addr.clone().downgrade()),
             use_grpc,
         );
-        request_client.set_auth_addr(auth_addr);
         let r = Arc::new(Self {
             tenant,
             request_client,
@@ -100,21 +106,10 @@ impl ConfigClient {
 
     pub(crate) fn init_register(
         mut request_client: ConfigInnerRequestClient,
-        auth_info: Option<AuthInfo>,
         conn_manage_addr: Option<WeakAddr<ConnManage>>,
         use_grpc: bool,
-    ) -> (Addr<ConfigInnerActor>, Addr<AuthActor>) {
+    ) -> Addr<ConfigInnerActor> {
         let system_addr = init_global_system_actor();
-        let endpoint = request_client.endpoints.clone();
-        let actor = AuthActor::new(endpoint, auth_info);
-        let (tx, rx) = std::sync::mpsc::sync_channel(1);
-        let msg = ActixSystemCmd::AuthActor(actor, tx);
-        system_addr.do_send(msg);
-        let auth_addr = match rx.recv().unwrap() {
-            ActixSystemResult::AuthActorAddr(auth_addr) => auth_addr,
-            _ => panic!("init actor error"),
-        };
-        request_client.set_auth_addr(auth_addr.clone());
         let actor = ConfigInnerActor::new(request_client, use_grpc, conn_manage_addr);
         let (tx, rx) = std::sync::mpsc::sync_channel(1);
         let msg = ActixSystemCmd::ConfigInnerActor(actor, tx);
@@ -123,7 +118,7 @@ impl ConfigClient {
             ActixSystemResult::ConfigInnerActor(addr) => addr,
             _ => panic!("init actor error"),
         };
-        (config_inner_addr, auth_addr)
+        config_inner_addr
     }
 
     pub fn gene_config_key(&self, data_id: &str, group: &str) -> ConfigKey {

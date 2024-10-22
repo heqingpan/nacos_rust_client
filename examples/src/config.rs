@@ -20,8 +20,8 @@ async fn main() {
     //let host = HostInfo::parse("127.0.0.1:8848");
     //let config_client = ConfigClient::new(host,String::new());
     let tenant = "public".to_owned(); //default teant
-                                      //let auth_info = Some(AuthInfo::new("nacos","nacos"));
-    let auth_info = None;
+    let auth_info = Some(AuthInfo::new("nacos", "nacos"));
+    //let auth_info = None;
     //let config_client = ConfigClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848",tenant,auth_info);
     let config_client = ClientBuilder::new()
         .set_endpoint_addrs("127.0.0.1:8848,127.0.0.1:8848")

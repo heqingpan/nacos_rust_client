@@ -3,6 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::AuthInfo;
+use crate::client::nacos_client::{ActixSystemCmd, ActixSystemResult};
+use crate::init_global_system_actor;
 use actix::{prelude::*, Context};
 
 pub struct AuthActor {
@@ -63,7 +65,10 @@ impl AuthActor {
             return self.token.clone();
         }
         self.update_token(ctx);
-        return self.token.clone();
+        if self.token.is_empty() {
+            log::warn!("get token is empty");
+        }
+        self.token.clone()
     }
 
     pub fn hb(&mut self, ctx: &mut Context<Self>) {
@@ -77,6 +82,21 @@ impl AuthActor {
         ctx.run_later(Duration::from_secs(30), |act, ctx| {
             act.hb(ctx);
         });
+    }
+
+    pub fn init_auth_actor(
+        endpoints: Arc<ServerEndpointInfo>,
+        auth_info: Option<AuthInfo>,
+    ) -> Addr<AuthActor> {
+        let system_addr = init_global_system_actor();
+        let actor = AuthActor::new(endpoints, auth_info);
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let msg = ActixSystemCmd::AuthActor(actor, tx);
+        system_addr.do_send(msg);
+        match rx.recv().unwrap() {
+            ActixSystemResult::AuthActorAddr(auth_addr) => auth_addr,
+            _ => panic!("init actor error"),
+        }
     }
 }
 
@@ -116,4 +136,16 @@ impl Handler<AuthCmd> for AuthActor {
             }
         }
     }
+}
+
+pub async fn get_token_result(auth_addr: &Addr<AuthActor>) -> anyhow::Result<Arc<String>> {
+    match auth_addr.send(AuthCmd::QueryToken).await?? {
+        AuthHandleResult::None => {}
+        AuthHandleResult::Token(v) => {
+            if v.len() > 0 {
+                return Ok(v);
+            }
+        }
+    };
+    Ok(Default::default())
 }

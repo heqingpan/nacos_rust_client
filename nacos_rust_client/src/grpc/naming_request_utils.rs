@@ -1,20 +1,25 @@
+use actix::Addr;
+use serde::Serialize;
+use std::collections::HashMap;
 use std::sync::Arc;
-
 use tonic::transport::Channel;
-
-use crate::{
-    client::naming_client::{Instance, ServiceInstanceKey},
-    conn_manage::conn_msg::{NamingResponse, ServiceResult},
-    grpc::{api_model::InstanceRequest, constant::LABEL_MODULE_NAMING},
-};
 
 use super::{
     api_model::{
         BaseResponse, BatchInstanceRequest, Instance as ApiInstance, ServiceQueryRequest,
         ServiceQueryResponse, SubscribeServiceRequest, SubscribeServiceResponse,
     },
-    do_timeout_request,
+    build_request_payload, do_timeout_request,
     utils::PayloadUtils,
+    ACCESS_TOKEN_HEADER,
+};
+use crate::client::auth::{get_token_result, AuthActor};
+use crate::client::ClientInfo;
+use crate::grpc::nacos_proto::Payload;
+use crate::{
+    client::naming_client::{Instance, ServiceInstanceKey},
+    conn_manage::conn_msg::{NamingResponse, ServiceResult},
+    grpc::{api_model::InstanceRequest, constant::LABEL_MODULE_NAMING},
 };
 
 const REGISTER_INSTANCE: &str = "registerInstance";
@@ -65,6 +70,8 @@ impl GrpcNamingRequestUtils {
         channel: Channel,
         instance: Instance,
         is_reqister: bool,
+        auth_addr: Addr<AuthActor>,
+        client_info: Arc<ClientInfo>,
     ) -> anyhow::Result<NamingResponse> {
         let request = InstanceRequest {
             namespace: Some(instance.namespace_id.to_owned()),
@@ -79,9 +86,8 @@ impl GrpcNamingRequestUtils {
             module: Some(LABEL_MODULE_NAMING.to_owned()),
             ..Default::default()
         };
-
-        let val = serde_json::to_string(&request).unwrap();
-        let payload = PayloadUtils::build_payload("InstanceRequest", val);
+        let payload =
+            build_request_payload("InstanceRequest", &request, &auth_addr, &client_info).await?;
         //debug
         //log::info!("instance_register request,{}",&PayloadUtils::get_payload_string(&payload));
         let payload = do_timeout_request(channel, payload).await?;
@@ -102,6 +108,8 @@ impl GrpcNamingRequestUtils {
     pub async fn batch_register(
         channel: Channel,
         instances: Vec<Instance>,
+        auth_addr: Addr<AuthActor>,
+        client_info: Arc<ClientInfo>,
     ) -> anyhow::Result<NamingResponse> {
         if instances.len() == 0 {
             return Err(anyhow::anyhow!("register instances is empty"));
@@ -121,8 +129,9 @@ impl GrpcNamingRequestUtils {
             .collect::<Vec<_>>();
         request.instances = Some(api_instances);
 
-        let val = serde_json::to_string(&request).unwrap();
-        let payload = PayloadUtils::build_payload("BatchInstanceRequest", val);
+        let payload =
+            build_request_payload("BatchInstanceRequest", &request, &auth_addr, &client_info)
+                .await?;
         let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("batch_register,{}",&PayloadUtils::get_payload_string(&payload));
@@ -143,6 +152,8 @@ impl GrpcNamingRequestUtils {
         service_key: ServiceInstanceKey,
         is_subscribe: bool,
         clusters: Option<String>,
+        auth_addr: Addr<AuthActor>,
+        client_info: Arc<ClientInfo>,
     ) -> anyhow::Result<NamingResponse> {
         let clone_key = service_key.clone();
         let request = SubscribeServiceRequest {
@@ -154,8 +165,13 @@ impl GrpcNamingRequestUtils {
             module: Some(LABEL_MODULE_NAMING.to_owned()),
             ..Default::default()
         };
-        let val = serde_json::to_string(&request).unwrap();
-        let payload = PayloadUtils::build_payload("SubscribeServiceRequest", val);
+        let payload = build_request_payload(
+            "SubscribeServiceRequest",
+            &request,
+            &auth_addr,
+            &client_info,
+        )
+        .await?;
         let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("subscribe,{}",&PayloadUtils::get_payload_string(&payload));
@@ -189,6 +205,8 @@ impl GrpcNamingRequestUtils {
         service_key: ServiceInstanceKey,
         cluster: Option<String>,
         healthy_only: Option<bool>,
+        auth_addr: Addr<AuthActor>,
+        client_info: Arc<ClientInfo>,
     ) -> anyhow::Result<NamingResponse> {
         let clone_key = service_key.clone();
         let request = ServiceQueryRequest {
@@ -200,8 +218,9 @@ impl GrpcNamingRequestUtils {
             module: Some(LABEL_MODULE_NAMING.to_owned()),
             ..Default::default()
         };
-        let val = serde_json::to_string(&request).unwrap();
-        let payload = PayloadUtils::build_payload("ServiceQueryRequest", val);
+        let payload =
+            build_request_payload("ServiceQueryRequest", &request, &auth_addr, &client_info)
+                .await?;
         let payload = do_timeout_request(channel, payload).await?;
         //log::info!("query_service,{}",&PayloadUtils::get_payload_string(&payload));
         let body_vec = payload.body.unwrap_or_default().value;

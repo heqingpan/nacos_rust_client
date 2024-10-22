@@ -3,6 +3,11 @@ use std::sync::Arc;
 use actix::{Actor, Addr, WeakAddr};
 use tonic::transport::Channel;
 
+use super::{
+    breaker::{Breaker, BreakerConfig},
+    manage::ConnManage,
+};
+use crate::client::auth::AuthActor;
 use crate::{
     client::{
         config_client::inner_client::ConfigInnerRequestClient,
@@ -11,12 +16,7 @@ use crate::{
     grpc::grpc_client::InnerGrpcClient,
 };
 
-use super::{
-    breaker::{Breaker, BreakerConfig},
-    manage::ConnManage,
-};
-
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub(crate) struct InnerConn {
     pub id: u32,
     pub weight: u64,
@@ -28,7 +28,8 @@ pub(crate) struct InnerConn {
     pub grpc_client_addr: Option<Addr<InnerGrpcClient>>,
     pub config_request_client: Option<Arc<ConfigInnerRequestClient>>,
     pub naming_request_client: Option<Arc<InnerNamingRequestClient>>,
-    client_info: Arc<ClientInfo>,
+    pub(crate) client_info: Arc<ClientInfo>,
+    pub(crate) auth_addr: Addr<AuthActor>,
 }
 
 impl InnerConn {
@@ -38,6 +39,7 @@ impl InnerConn {
         support_grpc: bool,
         breaker_config: Arc<BreakerConfig>,
         client_info: Arc<ClientInfo>,
+        auth_addr: Addr<AuthActor>,
     ) -> Self {
         Self {
             id,
@@ -51,6 +53,7 @@ impl InnerConn {
             config_request_client: None,
             naming_request_client: None,
             client_info,
+            auth_addr,
         }
     }
 
@@ -66,6 +69,7 @@ impl InnerConn {
                 channel.clone(),
                 manage_addr,
                 self.client_info.clone(),
+                self.auth_addr.clone(),
             )?;
             self.channel = Some(channel);
             self.grpc_client_addr = Some(grpc_client.start());

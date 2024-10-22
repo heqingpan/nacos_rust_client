@@ -1,10 +1,8 @@
+use actix::Addr;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tonic::transport::Channel;
-
-use crate::{
-    client::{config_client::ConfigKey, get_md5, now_millis},
-    conn_manage::conn_msg::ConfigResponse,
-    grpc::constant::LABEL_MODULE_CONFIG,
-};
 
 use super::{
     api_model::{
@@ -12,14 +10,27 @@ use super::{
         ConfigListenContext, ConfigPublishRequest, ConfigQueryRequest, ConfigQueryResponse,
         ConfigRemoveRequest,
     },
-    do_timeout_request,
+    build_request_payload, do_timeout_request,
     utils::PayloadUtils,
+    ACCESS_TOKEN_HEADER,
+};
+use crate::client::auth::{get_token_result, AuthActor};
+use crate::client::ClientInfo;
+use crate::grpc::nacos_proto::Payload;
+use crate::{
+    client::{config_client::ConfigKey, get_md5, now_millis},
+    conn_manage::conn_msg::ConfigResponse,
+    grpc::constant::LABEL_MODULE_CONFIG,
 };
 
 pub(crate) struct GrpcConfigRequestUtils;
 
 impl GrpcConfigRequestUtils {
-    pub async fn check_register(channel: Channel) -> anyhow::Result<bool> {
+    pub async fn check_register(
+        channel: Channel,
+        auth_addr: Addr<AuthActor>,
+        client_info: Arc<ClientInfo>,
+    ) -> anyhow::Result<bool> {
         let check_id = format!("__check_register_{}", now_millis());
         let config_key = ConfigKey::new(&check_id, "__check", "");
         let request = ConfigQueryRequest {
@@ -30,8 +41,8 @@ impl GrpcConfigRequestUtils {
             request_id: Some(check_id),
             ..Default::default()
         };
-        let val = serde_json::to_string(&request).unwrap();
-        let payload = PayloadUtils::build_payload("ConfigQueryRequest", val);
+        let payload =
+            build_request_payload("ConfigQueryRequest", &request, &auth_addr, &client_info).await?;
         let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("check_register,{}",&PayloadUtils::get_payload_string(&payload));
@@ -48,6 +59,8 @@ impl GrpcConfigRequestUtils {
         channel: Channel,
         request_id: Option<String>,
         config_key: ConfigKey,
+        auth_addr: Addr<AuthActor>,
+        client_info: Arc<ClientInfo>,
     ) -> anyhow::Result<ConfigResponse> {
         let request = ConfigQueryRequest {
             data_id: config_key.data_id,
@@ -57,8 +70,8 @@ impl GrpcConfigRequestUtils {
             request_id,
             ..Default::default()
         };
-        let val = serde_json::to_string(&request).unwrap();
-        let payload = PayloadUtils::build_payload("ConfigQueryRequest", val);
+        let payload =
+            build_request_payload("ConfigQueryRequest", &request, &auth_addr, &client_info).await?;
         let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("config_query,{}",&PayloadUtils::get_payload_string(&payload));
@@ -80,6 +93,8 @@ impl GrpcConfigRequestUtils {
         request_id: Option<String>,
         config_key: ConfigKey,
         content: String,
+        auth_addr: Addr<AuthActor>,
+        client_info: Arc<ClientInfo>,
     ) -> anyhow::Result<ConfigResponse> {
         let request = ConfigPublishRequest {
             data_id: config_key.data_id,
@@ -90,8 +105,9 @@ impl GrpcConfigRequestUtils {
             module: Some(LABEL_MODULE_CONFIG.to_owned()),
             ..Default::default()
         };
-        let val = serde_json::to_string(&request).unwrap();
-        let payload = PayloadUtils::build_payload("ConfigPublishRequest", val);
+        let payload =
+            build_request_payload("ConfigPublishRequest", &request, &auth_addr, &client_info)
+                .await?;
         let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("config_publish,{}",&PayloadUtils::get_payload_string(&payload));
@@ -111,6 +127,8 @@ impl GrpcConfigRequestUtils {
         channel: Channel,
         request_id: Option<String>,
         config_key: ConfigKey,
+        auth_addr: Addr<AuthActor>,
+        client_info: Arc<ClientInfo>,
     ) -> anyhow::Result<ConfigResponse> {
         let request = ConfigRemoveRequest {
             data_id: config_key.data_id,
@@ -120,8 +138,9 @@ impl GrpcConfigRequestUtils {
             request_id,
             ..Default::default()
         };
-        let val = serde_json::to_string(&request).unwrap();
-        let payload = PayloadUtils::build_payload("ConfigRemoveRequest", val);
+        let payload =
+            build_request_payload("ConfigRemoveRequest", &request, &auth_addr, &client_info)
+                .await?;
         let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("config_remove,{}",&PayloadUtils::get_payload_string(&payload));
@@ -142,6 +161,8 @@ impl GrpcConfigRequestUtils {
         request_id: Option<String>,
         listen_items: Vec<(ConfigKey, String)>,
         listen: bool,
+        auth_addr: Addr<AuthActor>,
+        client_info: Arc<ClientInfo>,
     ) -> anyhow::Result<ConfigResponse> {
         let config_listen_contexts: Vec<ConfigListenContext> = listen_items
             .into_iter()
@@ -160,8 +181,13 @@ impl GrpcConfigRequestUtils {
             request_id,
             ..Default::default()
         };
-        let val = serde_json::to_string(&request).unwrap();
-        let payload = PayloadUtils::build_payload("ConfigBatchListenRequest", val);
+        let payload = build_request_payload(
+            "ConfigBatchListenRequest",
+            &request,
+            &auth_addr,
+            &client_info,
+        )
+        .await?;
         let payload = do_timeout_request(channel, payload).await?;
         //debug
         //log::info!("config_change_batch_listen,{}",&PayloadUtils::get_payload_string(&payload));
