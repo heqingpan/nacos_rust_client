@@ -43,7 +43,7 @@ pub struct ConnManage {
     pub(crate) callback: NotifyCallbackAddr,
     reconnecting: bool,
     client_info: Arc<ClientInfo>,
-    auth_addr: Addr<AuthActor>,
+    //auth_addr: Addr<AuthActor>,
 }
 
 impl ConnManage {
@@ -84,7 +84,7 @@ impl ConnManage {
             callback: Default::default(),
             reconnecting: false,
             client_info,
-            auth_addr,
+            //auth_addr,
         }
     }
 

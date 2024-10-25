@@ -86,15 +86,17 @@ pub trait ConfigListener {
     fn change(&self, key: &ConfigKey, value: &str);
 }
 
+pub type ListenerConvert<T> = Arc<dyn Fn(&str) -> Option<T> + Send + Sync>;
+
 #[derive(Clone)]
 pub struct ConfigDefaultListener<T> {
     key: ConfigKey,
     pub content: Arc<std::sync::RwLock<Option<Arc<T>>>>,
-    pub convert: Arc<dyn Fn(&str) -> Option<T> + Send + Sync>,
+    pub convert: ListenerConvert<T>,
 }
 
 impl<T> ConfigDefaultListener<T> {
-    pub fn new(key: ConfigKey, convert: Arc<dyn Fn(&str) -> Option<T> + Send + Sync>) -> Self {
+    pub fn new(key: ConfigKey, convert: ListenerConvert<T>) -> Self {
         Self {
             key,
             content: Default::default(),
@@ -103,10 +105,7 @@ impl<T> ConfigDefaultListener<T> {
     }
 
     pub fn get_value(&self) -> Option<Arc<T>> {
-        match self.content.read().unwrap().as_ref() {
-            Some(c) => Some(c.clone()),
-            _ => None,
-        }
+        self.content.read().unwrap().as_ref().map(|c| c.clone())
     }
 
     fn set_value(content: Arc<std::sync::RwLock<Option<Arc<T>>>>, value: T) {
@@ -153,14 +152,11 @@ impl ListenerValue {
     pub(crate) fn remove(&mut self, id: u64) -> usize {
         let mut indexs = Vec::new();
         for i in 0..self.listeners.len() {
-            match self.listeners.get(i) {
-                Some((item_id, _)) => {
-                    if id == *item_id {
-                        indexs.push(i);
-                    }
+            if let Some((item_id, _)) = self.listeners.get(i) {
+                if id == *item_id {
+                    indexs.push(i);
                 }
-                None => {}
-            };
+            }
         }
         for index in indexs.iter().rev() {
             let index = *index;

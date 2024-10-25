@@ -69,7 +69,7 @@ impl ConfigInnerRequestClient {
         let mut param: HashMap<&str, &str> = HashMap::new();
         param.insert("group", &key.group);
         param.insert("dataId", &key.data_id);
-        if key.tenant.len() > 0 {
+        if !key.tenant.is_empty() {
             param.insert("tenant", &key.tenant);
         }
         let host = self.endpoints.select_host();
@@ -102,7 +102,7 @@ impl ConfigInnerRequestClient {
         let mut param: HashMap<&str, &str> = HashMap::new();
         param.insert("group", &key.group);
         param.insert("dataId", &key.data_id);
-        if key.tenant.len() > 0 {
+        if !key.tenant.is_empty() {
             param.insert("tenant", &key.tenant);
         }
         param.insert("content", value);
@@ -134,7 +134,7 @@ impl ConfigInnerRequestClient {
         let mut param: HashMap<&str, &str> = HashMap::new();
         param.insert("group", &key.group);
         param.insert("dataId", &key.data_id);
-        if key.tenant.len() > 0 {
+        if !key.tenant.is_empty() {
             param.insert("tenant", &key.tenant);
         }
         let token_param = self.get_token().await;
@@ -199,9 +199,9 @@ impl ConfigInnerRequestClient {
         }
         let text = resp.get_string_body();
         let t = format!("v={}", &text);
-        let map: HashMap<&str, String> = serde_urlencoded::from_str(&t).unwrap();
+        let map: HashMap<&str, String> = serde_urlencoded::from_str(&t)?;
         let text = map.get("v").unwrap_or(&text);
-        let items = ListenerItem::decode_listener_change_keys(&text);
+        let items = ListenerItem::decode_listener_change_keys(text);
         Ok(items)
     }
 }

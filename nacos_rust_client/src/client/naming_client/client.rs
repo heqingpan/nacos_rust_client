@@ -19,7 +19,7 @@ use super::{
     InnerNamingListener, InnerNamingRegister, InnerNamingRequestClient, NamingListenerCmd,
     NamingRegisterCmd, UdpWorker,
 };
-use crate::client::{utils, HostInfo};
+use crate::client::{HostInfo};
 use actix::prelude::*;
 use actix::WeakAddr;
 

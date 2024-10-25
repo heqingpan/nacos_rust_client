@@ -27,6 +27,7 @@ impl NacosConfig {
     }
 }
 
+#[derive(Default)]
 pub struct NacosClient {
     //config:NacosConfig,
 }
@@ -40,6 +41,7 @@ impl NacosClient {
     }
 }
 
+#[derive(Default)]
 pub struct ActixSystemActor {
     last_config_client: Option<Arc<ConfigClient>>,
     last_naming_client: Option<Arc<NamingClient>>,
@@ -139,17 +141,14 @@ pub trait ActorCreate {
     fn create(&self);
 }
 
-pub struct ActorCreateWrap<T: actix::Actor, P> {
+pub struct ActorCreateWrap<T: Actor, P> {
     pub content: Arc<std::sync::Mutex<Option<Addr<T>>>>,
     pub params: P,
 }
 
-impl<T: actix::Actor, P> ActorCreateWrap<T, P> {
+impl<T: Actor, P> ActorCreateWrap<T, P> {
     pub fn get_value(&self) -> Option<Addr<T>> {
-        match self.content.lock().unwrap().as_ref() {
-            Some(c) => Some(c.clone()),
-            _ => None,
-        }
+        self.content.lock().unwrap().as_ref().map(|c| c.clone())
     }
 
     pub fn set_value(&self, addr: Addr<T>) {
@@ -310,11 +309,11 @@ pub fn clear_global_system_actor() -> Option<Addr<ActixSystemActor>> {
 
 pub fn init_global_system_actor() -> Addr<ActixSystemActor> {
     if let Some(r) = get_global_system_actor() {
-        return r;
+        r
     } else {
         let addr = init_register();
         set_global_system_actor(addr.clone());
-        return addr;
+        addr
     }
 }
 
@@ -330,11 +329,8 @@ pub fn get_last_config_client() -> Option<Arc<ConfigClient>> {
     if let Some(actor) = get_global_system_actor() {
         let (tx, rx) = std::sync::mpsc::sync_channel(1);
         actor.do_send(ActixSystemActorQueryCmd::SyncQueryLastConfigClient(tx));
-        match *rx.recv().unwrap() {
-            ActixSystemActorQueryResult::LastConfigClient(client) => {
-                return Some(client);
-            }
-            _ => {}
+        if let ActixSystemActorQueryResult::LastConfigClient(client) = *rx.recv().unwrap() {
+            return Some(client);
         }
     }
     None
@@ -344,11 +340,8 @@ pub fn get_last_naming_client() -> Option<Arc<NamingClient>> {
     if let Some(actor) = get_global_system_actor() {
         let (tx, rx) = std::sync::mpsc::sync_channel(1);
         actor.do_send(ActixSystemActorQueryCmd::SyncQueryLastNamingClient(tx));
-        match *rx.recv().unwrap() {
-            ActixSystemActorQueryResult::LastNamingClient(client) => {
-                return Some(client);
-            }
-            _ => {}
+        if let ActixSystemActorQueryResult::LastNamingClient(client) = *rx.recv().unwrap() {
+            return Some(client);
         }
     }
     None
@@ -362,6 +355,5 @@ fn init_register() -> Addr<ActixSystemActor> {
         tx.send(addrs).unwrap();
         rt.run().unwrap();
     });
-    let addrs = rx.recv().unwrap();
-    addrs
+    rx.recv().unwrap()
 }

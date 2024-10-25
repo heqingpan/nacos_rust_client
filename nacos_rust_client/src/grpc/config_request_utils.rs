@@ -1,6 +1,4 @@
 use actix::Addr;
-use serde::Serialize;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tonic::transport::Channel;
 
@@ -11,12 +9,9 @@ use super::{
         ConfigRemoveRequest,
     },
     build_request_payload, do_timeout_request,
-    utils::PayloadUtils,
-    ACCESS_TOKEN_HEADER,
 };
-use crate::client::auth::{get_token_result, AuthActor};
+use crate::client::auth::{AuthActor};
 use crate::client::ClientInfo;
-use crate::grpc::nacos_proto::Payload;
 use crate::{
     client::{config_client::ConfigKey, get_md5, now_millis},
     conn_manage::conn_msg::ConfigResponse,

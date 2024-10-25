@@ -86,7 +86,7 @@ impl ConfigClient {
             auth_actor.clone(),
         );
         let conn_manage_addr = conn_manage.start_at_global_system();
-        let mut request_client =
+        let request_client =
             ConfigInnerRequestClient::new_with_endpoint(endpoint, Some(auth_actor));
         let config_inner_addr = Self::init_register(
             request_client.clone(),
@@ -105,7 +105,7 @@ impl ConfigClient {
     }
 
     pub(crate) fn init_register(
-        mut request_client: ConfigInnerRequestClient,
+        request_client: ConfigInnerRequestClient,
         conn_manage_addr: Option<WeakAddr<ConnManage>>,
         use_grpc: bool,
     ) -> Addr<ConfigInnerActor> {
@@ -114,11 +114,10 @@ impl ConfigClient {
         let (tx, rx) = std::sync::mpsc::sync_channel(1);
         let msg = ActixSystemCmd::ConfigInnerActor(actor, tx);
         system_addr.do_send(msg);
-        let config_inner_addr = match rx.recv().unwrap() {
+        match rx.recv().unwrap() {
             ActixSystemResult::ConfigInnerActor(addr) => addr,
             _ => panic!("init actor error"),
-        };
-        config_inner_addr
+        }
     }
 
     pub fn gene_config_key(&self, data_id: &str, group: &str) -> ConfigKey {

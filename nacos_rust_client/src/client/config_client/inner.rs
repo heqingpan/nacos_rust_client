@@ -207,18 +207,12 @@ impl Handler<ConfigInnerCmd> for ConfigInnerActor {
             ConfigInnerCmd::REMOVE(key, id) => {
                 if let Some(v) = self.subscribe_map.get_mut(&key) {
                     let size = v.remove(id);
-                    if size == 0 {
-                        if self.subscribe_map.remove(&key).is_some() {
-                            if self.use_grpc {
-                                if let Some(addr) = &self.conn_manage {
-                                    if let Some(addr) = addr.upgrade() {
-                                        addr.do_send(ConfigRequest::Listen(
-                                            vec![(key.clone(), "".to_owned())],
-                                            false,
-                                        ));
-                                    }
-                                }
-                            }
+                    if size == 0 && self.subscribe_map.remove(&key).is_some() && self.use_grpc {
+                        if let Some(Some(addr))  = self.conn_manage.as_ref().map(WeakAddr::upgrade) {
+                            addr.do_send(ConfigRequest::Listen(
+                                vec![(key.clone(), "".to_owned())],
+                                false,
+                            ));
                         }
                     }
                 };
