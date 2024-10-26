@@ -1,3 +1,4 @@
+#![allow(clippy::should_implement_trait)]
 use std::sync::Arc;
 use std::time::Duration;
 //use actix::prelude::*;
@@ -59,17 +60,17 @@ impl Instance {
         namespace_id: &str,
         metadata: Option<HashMap<String, String>>,
     ) -> Self {
-        let cluster_name = if cluster_name.len() == 0 {
+        let cluster_name = if cluster_name.is_empty() {
             "DEFAULT".to_owned()
         } else {
             cluster_name.to_owned()
         };
-        let group_name = if group_name.len() == 0 {
+        let group_name = if group_name.is_empty() {
             "DEFAULT_GROUP".to_owned()
         } else {
             group_name.to_owned()
         };
-        let namespace_id = if namespace_id.len() == 0 {
+        let namespace_id = if namespace_id.is_empty() {
             "public".to_owned()
         } else {
             namespace_id.to_owned()
@@ -107,20 +108,17 @@ impl Instance {
     }
 
     fn generate_beat_info(&self) -> BeatInfo {
-        let mut beat = BeatInfo::default();
-        beat.cluster = self.cluster_name.to_owned();
-        beat.ip = self.ip.to_owned();
-        beat.port = self.port;
-        if let Some(metadata) = &self.metadata {
-            beat.metadata = metadata.clone();
+        BeatInfo {
+            cluster: self.cluster_name.to_owned(),
+            ip: self.ip.to_owned(),
+            port: self.port,
+            metadata: self.metadata.clone().unwrap_or_default(),
+            period: REGISTER_PERIOD as i64,
+            scheduled: false,
+            service_name: self.get_service_named(),
+            stopped: false,
+            weight: self.weight,
         }
-        beat.period = REGISTER_PERIOD as i64;
-        beat.scheduled = false;
-        beat.service_name = self.get_service_named();
-        beat.stopped = false;
-        beat.weight = self.weight;
-        beat
-        //serde_json::to_string(&beat).unwrap()
     }
 
     fn generate_beat_request(&self) -> BeatRequest {
@@ -144,21 +142,23 @@ impl Instance {
     }
 
     pub fn to_web_params(&self) -> InstanceWebParams {
-        let mut params = InstanceWebParams::default();
-        params.ip = self.ip.to_owned();
-        params.port = self.port;
-        params.namespace_id = self.namespace_id.to_owned();
-        params.weight = self.weight;
-        params.enabled = true;
-        params.healthy = true;
-        params.ephemeral = true;
-        if let Some(metadata) = &self.metadata {
-            params.metadata = serde_json::to_string(metadata).unwrap();
+        InstanceWebParams {
+            ip: self.ip.to_owned(),
+            port: self.port,
+            namespace_id: self.namespace_id.to_owned(),
+            weight: self.weight,
+            enabled: true,
+            healthy: true,
+            ephemeral: true,
+            metadata: self
+                .metadata
+                .as_ref()
+                .map(|v| serde_json::to_string(v).unwrap())
+                .unwrap_or_default(),
+            cluster_name: self.cluster_name.to_owned(),
+            service_name: self.get_service_named(),
+            group_name: self.group_name.to_owned(),
         }
-        params.cluster_name = self.cluster_name.to_owned();
-        params.service_name = self.get_service_named();
-        params.group_name = self.group_name.to_owned();
-        params
     }
 }
 
@@ -186,13 +186,24 @@ impl ServiceInstanceKey {
         NamingUtils::get_group_and_service_name(&self.service_name, &self.group_name)
     }
 
+    #[deprecated(since = "0.3.2", note = "Use `&str.into` instead.")]
     pub fn from_str(key_str: &str) -> Self {
-        let mut s = Self::new("", "");
-        if let Some((group, service)) = NamingUtils::split_group_and_serivce_name(&key_str) {
-            s.group_name = group;
-            s.service_name = service;
+        key_str.into()
+    }
+}
+
+impl From<&str> for ServiceInstanceKey {
+    fn from(key_str: &str) -> Self {
+        if let Some((group_name, service_name)) = NamingUtils::split_group_and_serivce_name(key_str)
+        {
+            Self {
+                namespace_id: None,
+                group_name,
+                service_name,
+            }
+        } else {
+            Self::new("", "")
         }
-        s
     }
 }
 
@@ -247,17 +258,21 @@ impl QueryInstanceListParams {
     }
 
     fn to_web_params(&self) -> InstanceWebQueryListParams {
-        let mut params = InstanceWebQueryListParams::default();
-        params.namespace_id = self.namespace_id.to_owned();
-        params.group_name = self.group_name.to_owned();
-        params.service_name =
-            NamingUtils::get_group_and_service_name(&self.service_name, &self.group_name);
-        if let Some(clusters) = &self.clusters {
-            params.clusters = clusters.join(",")
+        InstanceWebQueryListParams {
+            namespace_id: self.namespace_id.to_owned(),
+            service_name: NamingUtils::get_group_and_service_name(
+                &self.service_name,
+                &self.group_name,
+            ),
+            group_name: self.group_name.to_owned(),
+            clusters: self
+                .clusters
+                .as_ref()
+                .map(|v| v.join(","))
+                .unwrap_or_default(),
+            healthy_only: self.healthy_only,
+            client_ip: self.client_ip.clone(),
+            udp_port: self.udp_port,
         }
-        params.healthy_only = self.healthy_only;
-        params.client_ip = self.client_ip.clone();
-        params.udp_port = self.udp_port;
-        params
     }
 }

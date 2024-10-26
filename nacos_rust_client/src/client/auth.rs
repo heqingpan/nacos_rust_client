@@ -42,16 +42,14 @@ impl AuthActor {
         let auth = self.auth.clone();
         async move {
             let auth = auth.unwrap();
-            let result = super::Client::login(&client, endpoints, &auth).await;
-            result
+            super::Client::login(&client, endpoints, &auth).await
         }
         .into_actor(self)
-        .map(|result, this, _| match result {
-            Ok(token_info) => {
+        .map(|result, this, _| {
+            if let Ok(token_info) = result {
                 this.token = Arc::new(token_info.access_token);
                 this.token_time_out = super::now_millis() + (token_info.token_ttl - 5) * 1000;
             }
-            Err(_) => {}
         })
         .wait(ctx);
     }

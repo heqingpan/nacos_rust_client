@@ -15,8 +15,8 @@ async fn main() {
     //let host = HostInfo::parse("127.0.0.1:8848");
     //let client = NamingClient::new(host,"".to_owned());
     let namespace_id = "public".to_owned(); //default teant
-                                            //let auth_info = Some(AuthInfo::new("nacos","nacos"));
-    let auth_info = None;
+    let auth_info = Some(AuthInfo::new("nacos", "nacos"));
+    //let auth_info = None;
     //let client = NamingClient::new_with_addrs("127.0.0.1:8848,127.0.0.1:8848", namespace_id, auth_info);
     let client = ClientBuilder::new()
         .set_endpoint_addrs("127.0.0.1:8848,127.0.0.1:8848")

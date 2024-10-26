@@ -33,29 +33,22 @@ pub trait InstanceListener {
     );
 }
 
+type InstanceDefaultListenerContentType = Arc<std::sync::RwLock<Option<Arc<Vec<Arc<Instance>>>>>>;
+type InstanceDefaultListenerCallBackType = Arc<
+    dyn Fn(Arc<InstanceListenerValue>, InstanceListenerValue, InstanceListenerValue) + Send + Sync,
+>;
+
 #[derive(Clone)]
 pub struct InstanceDefaultListener {
     key: ServiceInstanceKey,
-    pub content: Arc<std::sync::RwLock<Option<Arc<Vec<Arc<Instance>>>>>>,
-    pub callback: Option<
-        Arc<
-            dyn Fn(Arc<InstanceListenerValue>, InstanceListenerValue, InstanceListenerValue)
-                + Send
-                + Sync,
-        >,
-    >,
+    pub content: InstanceDefaultListenerContentType,
+    pub callback: Option<InstanceDefaultListenerCallBackType>,
 }
 
 impl InstanceDefaultListener {
     pub fn new(
         key: ServiceInstanceKey,
-        callback: Option<
-            Arc<
-                dyn Fn(Arc<InstanceListenerValue>, InstanceListenerValue, InstanceListenerValue)
-                    + Send
-                    + Sync,
-            >,
-        >,
+        callback: Option<InstanceDefaultListenerCallBackType>,
     ) -> Self {
         Self {
             key,
@@ -71,10 +64,7 @@ impl InstanceDefaultListener {
         }
     }
 
-    fn set_value(
-        content: Arc<std::sync::RwLock<Option<Arc<Vec<Arc<Instance>>>>>>,
-        value: Vec<Arc<Instance>>,
-    ) {
+    fn set_value(content: InstanceDefaultListenerContentType, value: Vec<Arc<Instance>>) {
         let mut r = content.write().unwrap();
         *r = Some(Arc::new(value));
     }
@@ -173,37 +163,24 @@ impl InnerNamingListener {
         if self.use_grpc {
             return;
         }
-        //let client = self.request_client.clone();
         let conn_manage = self.conn_manage.clone();
         if let Some(instance_warp) = self.instances.get(&key) {
             let params = instance_warp.params.clone();
-            //Self::do_send_conn_msg(&self.conn_manage,NamingRequest::QueryInstance( Box::new(params.clone())));
             async move {
-                if let Some(conn_manage) = conn_manage {
-                    if let Some(conn_manage) = conn_manage.upgrade() {
-                        match conn_manage
-                            .send(NamingRequest::QueryInstance(Box::new(params.clone())))
-                            .await
-                        {
-                            Ok(res) => match res as anyhow::Result<NamingResponse> {
-                                Ok(res) => match res {
-                                    NamingResponse::ServiceResult(service_result) => {
-                                        return (key, Ok(service_result));
-                                    }
-                                    NamingResponse::None => {}
-                                },
-                                _ => {}
-                            },
-                            Err(_err) => {}
-                        }
+                if let Some(Some(conn_manage)) = conn_manage.map(|e| e.upgrade()) {
+                    if let NamingResponse::ServiceResult(service_result) = conn_manage
+                        .send(NamingRequest::QueryInstance(Box::new(params.clone())))
+                        .await??
+                    {
+                        return Ok((key, service_result));
                     }
                 }
-                (key, Err(anyhow::anyhow!("query instance error")))
+                Err(anyhow::anyhow!("query instance error"))
             }
             .into_actor(self)
-            .map(|(key, res), act, _| {
+            .map(|res: anyhow::Result<(String, ServiceResult)>, act, _| {
                 match res {
-                    Ok(result) => {
+                    Ok((key, result)) => {
                         act.update_instances_and_notify_by_service_result(key, result)
                             .ok();
                     }
@@ -222,7 +199,7 @@ impl InnerNamingListener {
         result: ServiceResult,
     ) -> anyhow::Result<()> {
         if let Some(cache_millis) = result.cache_millis {
-            self.period = cache_millis as u64;
+            self.period = cache_millis;
         }
         let mut is_notify = false;
         let mut old_instance_map = HashMap::new();
@@ -248,8 +225,7 @@ impl InnerNamingListener {
                         add_list.push(item.clone());
                     }
                 }
-                let remove_list: Vec<Arc<Instance>> =
-                    old_instance_map.into_iter().map(|(_, v)| v).collect();
+                let remove_list: Vec<Arc<Instance>> = old_instance_map.into_values().collect();
                 self.notify_listener(key, &instance_warp.instances, add_list, remove_list);
             }
         }
@@ -316,10 +292,10 @@ impl InnerNamingListener {
         add_list: Vec<Arc<Instance>>,
         remove_list: Vec<Arc<Instance>>,
     ) {
-        if add_list.len() == 0 && remove_list.len() == 0 {
+        if add_list.is_empty() && remove_list.is_empty() {
             return;
         }
-        let key = ServiceInstanceKey::from_str(&key_str);
+        let key: ServiceInstanceKey = key_str.as_str().into();
         if let Some(list) = self.listeners.get(&key_str) {
             for item in list {
                 item.listener
@@ -331,7 +307,7 @@ impl InnerNamingListener {
     fn filter_instances(
         &mut self,
         params: &QueryInstanceListParams,
-        ctx: &mut actix::Context<Self>,
+        ctx: &mut Context<Self>,
     ) -> Option<Vec<Arc<Instance>>> {
         let key = params.get_key();
         if let Some(instance_warp) = self.instances.get(&key) {
@@ -354,9 +330,7 @@ impl InnerNamingListener {
             //}
         } else {
             let addr = ctx.address();
-            addr.do_send(NamingListenerCmd::AddHeartbeat(
-                ServiceInstanceKey::from_str(&key),
-            ));
+            addr.do_send(NamingListenerCmd::AddHeartbeat(key.as_str().into()));
         }
         None
     }
@@ -385,7 +359,7 @@ impl InnerNamingListener {
             return;
         }
         for key_str in self.listeners.keys() {
-            let key = ServiceInstanceKey::from_str(key_str);
+            let key: ServiceInstanceKey = key_str.as_str().into();
             if key.service_name.is_empty() {
                 continue;
             }
@@ -438,7 +412,7 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                 let key_str = key.get_key();
                 //如果已经存在，则直接触发一次
                 if let Some(instance_wrap) = self.instances.get(&key_str) {
-                    if instance_wrap.instances.len() > 0 {
+                    if !instance_wrap.instances.is_empty() {
                         listener.change(
                             &key,
                             &instance_wrap.instances,
@@ -459,7 +433,7 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
             NamingListenerCmd::AddHeartbeat(key) => {
                 let clone_key = key.clone();
                 let key_str = key.get_key();
-                if let Some(_) = self.instances.get(&key_str) {
+                if self.instances.contains_key(&key_str) {
                     return Ok(());
                 } else {
                     //println!("======== AddHeartbeat ,key:{}",&key_str);
@@ -497,7 +471,7 @@ impl Handler<NamingListenerCmd> for InnerNamingListener {
                     for i in indexs.iter().rev() {
                         list.remove(*i);
                     }
-                    is_empty = list.len() == 0;
+                    is_empty = list.is_empty();
                 }
                 if is_empty {
                     self.listeners.remove(&key_str);
@@ -544,7 +518,7 @@ impl Handler<UdpDataCmd> for InnerNamingListener {
         let map: HashMap<String, String> = serde_json::from_slice(&data).unwrap_or_default();
         if let Some(str_data) = map.get("data") {
             let result: QueryListResult = serde_json::from_str(str_data)?;
-            let ref_time = result.last_ref_time.clone().unwrap_or_default();
+            let ref_time = result.last_ref_time.unwrap_or_default();
             let key = result.name.clone().unwrap_or_default();
             //send to client
             let mut map = HashMap::new();
@@ -624,22 +598,16 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
                     }
                     .into_actor(self)
                     .map(|(res, sender, param), act, ctx| {
-                        match res {
-                            Ok(service_result) => {
-                                let key = param.get_key();
-                                act.update_instances_and_notify_by_service_result(
-                                    key,
-                                    service_result,
-                                )
+                        if let Ok(service_result) = res {
+                            let key = param.get_key();
+                            act.update_instances_and_notify_by_service_result(key, service_result)
                                 .unwrap_or_default();
-                                if let Some(list) = act.filter_instances(&param, ctx) {
-                                    sender
-                                        .send(NamingQueryResult::List(list))
-                                        .unwrap_or_default();
-                                    return;
-                                }
+                            if let Some(list) = act.filter_instances(&param, ctx) {
+                                sender
+                                    .send(NamingQueryResult::List(list))
+                                    .unwrap_or_default();
+                                return;
                             }
-                            Err(_) => {}
                         }
                         sender.send(NamingQueryResult::None).unwrap_or_default();
                     })
@@ -677,27 +645,21 @@ impl Handler<NamingQueryCmd> for InnerNamingListener {
                     }
                     .into_actor(self)
                     .map(|(res, sender, param), act, ctx| {
-                        match res {
-                            Ok(service_result) => {
-                                let key = param.get_key();
-                                act.update_instances_and_notify_by_service_result(
-                                    key,
-                                    service_result,
-                                )
+                        if let Ok(service_result) = res {
+                            let key = param.get_key();
+                            act.update_instances_and_notify_by_service_result(key, service_result)
                                 .unwrap_or_default();
-                                if let Some(list) = act.filter_instances(&param, ctx) {
-                                    let index = NamingUtils::select_by_weight_fn(&list, |e| {
-                                        (e.weight * 1000f32) as u64
-                                    });
-                                    if let Some(e) = list.get(index) {
-                                        sender
-                                            .send(NamingQueryResult::One(e.clone()))
-                                            .unwrap_or_default();
-                                        return;
-                                    }
+                            if let Some(list) = act.filter_instances(&param, ctx) {
+                                let index = NamingUtils::select_by_weight_fn(&list, |e| {
+                                    (e.weight * 1000f32) as u64
+                                });
+                                if let Some(e) = list.get(index) {
+                                    sender
+                                        .send(NamingQueryResult::One(e.clone()))
+                                        .unwrap_or_default();
+                                    return;
                                 }
                             }
-                            Err(_) => {}
                         }
                         sender.send(NamingQueryResult::None).unwrap_or_default();
                     })

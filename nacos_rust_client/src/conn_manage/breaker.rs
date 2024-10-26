@@ -101,27 +101,15 @@ impl Breaker {
     }
 
     pub fn is_close(&self) -> bool {
-        if let BreakerStatus::Close = self.status {
-            true
-        } else {
-            false
-        }
+        matches!(self.status, BreakerStatus::Close)
     }
 
     pub fn is_open(&self) -> bool {
-        if let BreakerStatus::Open(_) = self.status {
-            true
-        } else {
-            false
-        }
+        matches!(self.status, BreakerStatus::Open(_))
     }
 
     pub fn is_half_open(&self) -> bool {
-        if let BreakerStatus::HalfOpen(_, _) = self.status {
-            true
-        } else {
-            false
-        }
+        matches!(self.status, BreakerStatus::HalfOpen(_, _))
     }
 
     pub fn can_try(&mut self) -> bool {

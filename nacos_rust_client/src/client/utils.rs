@@ -75,13 +75,13 @@ impl Utils {
         };
         if let Some(headers) = headers {
             for (k, v) in headers.iter() {
-                req_builer = req_builer.header(&k as &str, v.to_string());
+                req_builer = req_builer.header(k, v.to_string());
             }
         }
         if let Some(timeout) = timeout_millis {
             req_builer = req_builer.timeout(Duration::from_millis(timeout));
         }
-        if body.len() > 0 {
+        if !body.is_empty() {
             req_builer = req_builer.body(body);
         }
         let res = req_builer.send().await?;

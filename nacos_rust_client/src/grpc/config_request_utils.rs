@@ -10,7 +10,7 @@ use super::{
     },
     build_request_payload, do_timeout_request,
 };
-use crate::client::auth::{AuthActor};
+use crate::client::auth::AuthActor;
 use crate::client::ClientInfo;
 use crate::{
     client::{config_client::ConfigKey, get_md5, now_millis},

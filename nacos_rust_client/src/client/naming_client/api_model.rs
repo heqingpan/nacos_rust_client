@@ -143,7 +143,7 @@ pub struct NamingUtils;
 
 impl NamingUtils {
     pub fn get_group_and_service_name(service_name: &str, group_name: &str) -> String {
-        if group_name.len() == 0 {
+        if group_name.is_empty() {
             return format!("DEFAULT_GROUP@@{}", service_name);
         }
         format!("{}@@{}", group_name, service_name)
@@ -151,22 +151,22 @@ impl NamingUtils {
 
     pub fn split_group_and_serivce_name(grouped_name: &str) -> Option<(String, String)> {
         let split = grouped_name.split("@@").collect::<Vec<_>>();
-        if split.len() == 0 {
+        if split.is_empty() {
             return None;
         }
-        let a = split.get(0);
+        let a = split.first();
         let b = split.get(1);
         match b {
             Some(b) => {
                 let a = a.unwrap();
-                if a.len() == 0 {
+                if a.is_empty() {
                     return None;
                 }
                 Some(((*a).to_owned(), (*b).to_owned()))
             }
             None => match a {
                 Some(a) => {
-                    if a.len() == 0 {
+                    if a.is_empty() {
                         return None;
                     }
                     Some(("DEFAULT_GROUP".to_owned(), (*a).to_owned()))
@@ -176,7 +176,7 @@ impl NamingUtils {
         }
     }
 
-    fn do_select_index(list: &Vec<u64>, rand_value: u64) -> usize {
+    fn do_select_index(list: &[u64], rand_value: u64) -> usize {
         let len = list.len();
         if len <= 1 {
             return 0;
@@ -214,11 +214,11 @@ impl NamingUtils {
         Self::do_select_index(&superposition_list, rand_value)
     }
 
-    pub fn select_by_weight_fn<T, F>(list: &Vec<T>, f: F) -> usize
+    pub fn select_by_weight_fn<T, F>(list: &[T], f: F) -> usize
     where
         F: Fn(&T) -> u64,
     {
-        let weight_list: Vec<u64> = list.iter().map(|e| f(e)).collect();
+        let weight_list: Vec<u64> = list.iter().map(f).collect();
         Self::select_by_weight(&weight_list)
     }
 }

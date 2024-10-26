@@ -68,16 +68,14 @@ impl PayloadUtils {
         str
     }
 
-    pub fn get_payload_type<'a>(payload: &'a nacos_proto::Payload) -> Option<&'a String> {
+    pub fn get_payload_type(payload: &nacos_proto::Payload) -> Option<&String> {
         if let Some(meta) = &payload.metadata {
             return Some(&meta.r#type);
         }
         None
     }
 
-    pub fn get_metadata_type<'a>(
-        metadata: &'a Option<nacos_proto::Metadata>,
-    ) -> Option<&'a String> {
+    pub fn get_metadata_type(metadata: &Option<nacos_proto::Metadata>) -> Option<&String> {
         if let Some(meta) = metadata {
             return Some(&meta.r#type);
         }

@@ -61,10 +61,10 @@ impl HostInfo {
         let strs = addr.split(':').collect::<Vec<_>>();
         let mut port = 8848u32;
         let mut grpc_port = port + 1000;
-        let ip = strs.get(0).unwrap_or(&"127.0.0.1");
+        let ip = strs.first().unwrap_or(&"127.0.0.1");
         if let Some(p) = strs.get(1) {
             let ports = p.split('#').collect::<Vec<_>>();
-            if let Some(p) = ports.get(0) {
+            if let Some(p) = ports.first() {
                 let pstr = (*p).to_owned();
                 port = pstr.parse::<u32>().unwrap_or(8848u32);
                 grpc_port = port + 1000;
@@ -96,7 +96,7 @@ impl AuthInfo {
         }
     }
     pub fn is_valid(&self) -> bool {
-        self.username.len() > 0 && self.password.len() > 0
+        !self.username.is_empty() && !self.password.is_empty()
     }
 }
 
@@ -152,9 +152,9 @@ impl ServerEndpointInfo {
         let addrs = addrs.split(',').collect::<Vec<_>>();
         let mut hosts = Vec::new();
         for addr in addrs {
-            hosts.push(HostInfo::parse(&addr));
+            hosts.push(HostInfo::parse(addr));
         }
-        if hosts.len() == 0 {
+        if hosts.is_empty() {
             hosts.push(HostInfo::parse("127.0.0.1:8848"));
         }
         Self { hosts }

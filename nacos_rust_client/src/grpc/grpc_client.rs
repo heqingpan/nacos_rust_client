@@ -115,8 +115,7 @@ impl InnerGrpcClient {
             */
 
             let mut bi_request_stream_client = BiRequestStreamClient::new(channel);
-            let response = bi_request_stream_client.request_bi_stream(req).await;
-            response
+            bi_request_stream_client.request_bi_stream(req).await
         }
         .into_actor(self)
         .map(|response, actor, ctx| {
@@ -165,7 +164,7 @@ impl InnerGrpcClient {
                     }
                 }
             }
-            return false;
+            false
         }
         .into_actor(self)
         .map(|_r, act, _ctx| {
@@ -301,7 +300,7 @@ impl InnerGrpcClient {
                             match serde_json::from_slice::<NotifySubscriberRequest>(&body_vec) {
                                 Ok(request) => {
                                     let request_id = request.request_id.clone();
-                                    if let Some(manage_addr) = (&manage_addr).upgrade() {
+                                    if let Some(manage_addr) = manage_addr.upgrade() {
                                         let (service_key, service_result) =
                                             Self::convert_to_service_result(request);
                                         manage_addr.do_send(ConnCallbackMsg::InstanceChange(
@@ -485,17 +484,17 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
             }
             match config_request {
                 ConfigRequest::GetConfig(config_key) => {
-                    return GrpcConfigRequestUtils::config_query(
+                    GrpcConfigRequestUtils::config_query(
                         channel,
                         Some(request_id),
                         config_key,
                         auth_addr,
                         client_info,
                     )
-                    .await;
+                    .await
                 }
                 ConfigRequest::SetConfig(config_key, content) => {
-                    let res = GrpcConfigRequestUtils::config_publish(
+                    GrpcConfigRequestUtils::config_publish(
                         channel.clone(),
                         Some(request_id),
                         config_key.clone(),
@@ -503,7 +502,7 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
                         auth_addr,
                         client_info,
                     )
-                    .await;
+                    .await
                     /*
                     Self::do_config_change_notify(
                         channel.clone(),
@@ -513,17 +512,16 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
                     .await
                     .ok();
                     */
-                    return res;
                 }
                 ConfigRequest::DeleteConfig(config_key) => {
-                    let res = GrpcConfigRequestUtils::config_remove(
+                    GrpcConfigRequestUtils::config_remove(
                         channel.clone(),
                         Some(request_id),
                         config_key.clone(),
                         auth_addr,
                         client_info,
                     )
-                    .await;
+                    .await
                     /*
                     Self::do_config_change_notify(
                         channel.clone(),
@@ -533,11 +531,8 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
                     .await
                     .ok();
                     */
-                    return res;
                 }
-                ConfigRequest::V1Listen(_) => {
-                    return Err(anyhow::anyhow!("grpc not support"));
-                }
+                ConfigRequest::V1Listen(_) => Err(anyhow::anyhow!("grpc not support")),
                 ConfigRequest::Listen(listen_items, listen) => {
                     //println!("grpc Listen");
                     let res = GrpcConfigRequestUtils::config_change_batch_listen(
@@ -563,7 +558,7 @@ impl Handler<ConfigRequest> for InnerGrpcClient {
                             .ok();
                         }
                     }
-                    return Ok(ConfigResponse::None);
+                    Ok(ConfigResponse::None)
                 }
             }
         }
@@ -630,14 +625,12 @@ impl Handler<NamingRequest> for InnerGrpcClient {
                             client_info.clone(),
                         )
                         .await;
-                        if let Ok(res) = &res {
-                            if let NamingResponse::ServiceResult(service_result) = res {
-                                if let Some(manage_addr) = (&manage_addr).upgrade() {
-                                    manage_addr.do_send(ConnCallbackMsg::InstanceChange(
-                                        service_key,
-                                        service_result.clone(),
-                                    ));
-                                }
+                        if let Ok(NamingResponse::ServiceResult(service_result)) = &res {
+                            if let Some(manage_addr) = manage_addr.upgrade() {
+                                manage_addr.do_send(ConnCallbackMsg::InstanceChange(
+                                    service_key,
+                                    service_result.clone(),
+                                ));
                             }
                         }
                     }

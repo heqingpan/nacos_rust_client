@@ -19,7 +19,7 @@ use super::{
     InnerNamingListener, InnerNamingRegister, InnerNamingRequestClient, NamingListenerCmd,
     NamingRegisterCmd, UdpWorker,
 };
-use crate::client::{HostInfo};
+use crate::client::HostInfo;
 use actix::prelude::*;
 use actix::WeakAddr;
 
@@ -222,8 +222,6 @@ impl NamingClient {
         key: ServiceInstanceKey,
         listener: Box<T>,
     ) -> anyhow::Result<()> {
-        //let msg=NamingListenerCmd::AddHeartbeat(key.clone());
-        //self.listener_addr.do_send(msg);
         let id = 0u64;
         //如果之前没有数据，会触发加载数据
         let params = QueryInstanceListParams::new(
@@ -233,12 +231,7 @@ impl NamingClient {
             None,
             true,
         );
-        match self.query_instances(params).await {
-            Ok(_) => {
-                //listener.change(&key, &v,&v,&vec![]);
-            }
-            Err(_) => {}
-        };
+        self.query_instances(params).await.ok();
         let msg = NamingListenerCmd::Add(key, id, listener);
         self.listener_addr.do_send(msg);
         Ok(())

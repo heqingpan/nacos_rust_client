@@ -80,7 +80,7 @@ impl TonicDiscoverFactory {
         let listener = InstanceDefaultListener::new(
             key.clone(),
             Some(Arc::new(move |_, add_list, remove_list| {
-                if add_list.len() > 0 || remove_list.len() > 0 {
+                if !add_list.is_empty() || !remove_list.is_empty() {
                     let msg = DiscoverCmd::Change(new_key.clone(), add_list, remove_list);
                     addr.do_send(msg);
                 }
@@ -203,10 +203,7 @@ impl InnerTonicDiscoverCreate {
     }
 
     pub fn get_value(&self) -> Option<Addr<InnerTonicDiscover>> {
-        match self.content.read().unwrap().as_ref() {
-            Some(c) => Some(c.clone()),
-            _ => None,
-        }
+        self.content.read().unwrap().as_ref().map(|c| c.clone())
     }
 
     fn set_value(

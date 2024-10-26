@@ -131,7 +131,7 @@ impl InnerNamingRequestClient {
         )
         .await?;
         //log::debug!("heartbeat:{}",resp.get_lossy_string_body());
-        return Ok("ok" == resp.get_string_body());
+        Ok("ok" == resp.get_string_body())
     }
 
     pub(crate) async fn get_instance_list(
@@ -162,7 +162,7 @@ impl InnerNamingRequestClient {
         match result {
             Ok(r) => {
                 //log::debug!("get_instance_list instance:{}",&r.hosts.is_some());
-                return Ok(r);
+                Ok(r)
             }
             Err(e) => {
                 log::error!(
@@ -170,7 +170,7 @@ impl InnerNamingRequestClient {
                     &url,
                     resp.get_string_body()
                 );
-                return Err(anyhow::format_err!(e));
+                Err(anyhow::format_err!(e))
             }
         }
     }

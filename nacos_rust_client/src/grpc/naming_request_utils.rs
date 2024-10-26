@@ -9,7 +9,7 @@ use super::{
     },
     build_request_payload, do_timeout_request,
 };
-use crate::client::auth::{AuthActor};
+use crate::client::auth::AuthActor;
 use crate::client::ClientInfo;
 use crate::{
     client::naming_client::{Instance, ServiceInstanceKey},
@@ -106,10 +106,10 @@ impl GrpcNamingRequestUtils {
         auth_addr: Addr<AuthActor>,
         client_info: Arc<ClientInfo>,
     ) -> anyhow::Result<NamingResponse> {
-        if instances.len() == 0 {
+        if instances.is_empty() {
             return Err(anyhow::anyhow!("register instances is empty"));
         }
-        let first_instance = instances.get(0).unwrap();
+        let first_instance = instances.first().unwrap();
         let mut request = BatchInstanceRequest {
             namespace: Some(first_instance.namespace_id.to_owned()),
             service_name: Some(first_instance.service_name.to_owned()),
@@ -120,7 +120,7 @@ impl GrpcNamingRequestUtils {
         };
         let api_instances: Vec<ApiInstance> = instances
             .into_iter()
-            .map(|e| Self::convert_to_api_instance(e))
+            .map(Self::convert_to_api_instance)
             .collect::<Vec<_>>();
         request.instances = Some(api_instances);
 

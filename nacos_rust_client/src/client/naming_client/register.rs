@@ -162,7 +162,7 @@ impl Handler<NamingRegisterCmd> for InnerNamingRegister {
                     return Ok(());
                 }
                 if let Some(instance) = self.instances.get(&key) {
-                    self.heartbeat_instance(&instance);
+                    self.heartbeat_instance(instance);
                     self.timeout_set.add(time + self.period, key);
                 }
             }

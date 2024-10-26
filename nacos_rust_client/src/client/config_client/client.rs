@@ -9,7 +9,6 @@ use super::{
     inner_client::ConfigInnerRequestClient,
     listener::ConfigListener,
 };
-use crate::client::naming_client::InnerNamingRequestClient;
 use crate::{
     client::{
         auth::AuthActor,

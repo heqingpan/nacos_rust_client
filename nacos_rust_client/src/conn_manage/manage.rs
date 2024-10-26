@@ -55,7 +55,7 @@ impl ConnManage {
         client_info: Arc<ClientInfo>,
         auth_addr: Addr<AuthActor>,
     ) -> Self {
-        assert!(hosts.len() > 0);
+        assert!(!hosts.is_empty());
         let mut id = 0;
         let breaker_config = Arc::new(breaker_config);
         let mut conns = Vec::with_capacity(hosts.len());
