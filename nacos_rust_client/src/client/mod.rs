@@ -8,6 +8,7 @@ pub mod naming_client;
 
 pub mod utils;
 
+pub mod api_model;
 pub mod auth;
 
 use md5::{Digest, Md5};

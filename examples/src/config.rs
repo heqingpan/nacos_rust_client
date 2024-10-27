@@ -34,6 +34,8 @@ async fn main() {
     let key = ConfigKey::new("001", "foo", "");
     //设置
     config_client.set_config(&key, "1234").await.unwrap();
+    // 配置推送到服务端后， 监听更新可能需要一点时间
+    tokio::time::sleep(Duration::from_millis(1000)).await;
     //获取
     let v = config_client.get_config(&key).await.unwrap();
     println!("{:?},{}", &key, v);

@@ -1,3 +1,4 @@
+pub mod api_model;
 pub mod client;
 pub mod config_key;
 pub mod inner;

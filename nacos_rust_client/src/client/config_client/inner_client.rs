@@ -1,14 +1,15 @@
 use std::{collections::HashMap, sync::Arc};
 
+use super::{listener::ListenerItem, ConfigKey};
 use crate::client;
+use crate::client::api_model::{ConsoleResult, NamespaceInfo};
+use crate::client::config_client::api_model::{ConfigInfoDto, ConfigQueryParams, ConfigSearchPage};
 use crate::client::{
     auth::{AuthActor, AuthCmd, AuthHandleResult},
     utils::Utils,
     HostInfo, ServerEndpointInfo,
 };
 use actix::Addr;
-
-use super::{listener::ListenerItem, ConfigKey};
 
 #[derive(Clone)]
 pub struct ConfigInnerRequestClient {
@@ -63,6 +64,80 @@ impl ConfigInnerRequestClient {
 
     pub async fn get_token(&self) -> String {
         self.get_token_result().await.unwrap_or_default()
+    }
+
+    pub(crate) async fn get_namespace_list(
+        &self,
+    ) -> anyhow::Result<ConsoleResult<Vec<NamespaceInfo>>> {
+        let token_param = self.get_token().await;
+        let host = self.endpoints.select_host();
+        let url = format!(
+            "http://{}:{}/nacos/v1/console/namespaces?{}",
+            &host.ip, &host.port, token_param,
+        );
+        let resp = Utils::request(
+            &self.client,
+            "GET",
+            &url,
+            vec![],
+            Some(&self.headers),
+            Some(10000),
+        )
+        .await?;
+        Ok(serde_json::from_slice(&resp.body)?)
+    }
+
+    pub(crate) async fn query_blur_config_page(
+        &self,
+        mut params: ConfigQueryParams,
+    ) -> anyhow::Result<ConfigSearchPage<ConfigInfoDto>> {
+        params.search = Some("blur".to_string());
+        let token_param = self.get_token().await;
+        let host = self.endpoints.select_host();
+        let url = format!(
+            "http://{}:{}/nacos/v1/cs/configs?{}&{}",
+            &host.ip,
+            &host.port,
+            token_param,
+            &serde_urlencoded::to_string(&params)?
+        );
+        let resp = Utils::request(
+            &self.client,
+            "GET",
+            &url,
+            vec![],
+            Some(&self.headers),
+            Some(10000),
+        )
+        .await?;
+        Ok(serde_json::from_slice(&resp.body)?)
+    }
+
+    pub(crate) async fn query_accurate_config_page(
+        &self,
+        mut params: ConfigQueryParams,
+    ) -> anyhow::Result<ConfigSearchPage<ConfigInfoDto>> {
+        params.search = Some("accurate".to_string());
+        let token_param = self.get_token().await;
+        let host = self.endpoints.select_host();
+        let url = format!(
+            "http://{}:{}/nacos/v1/cs/configs?{}&{}",
+            &host.ip,
+            &host.port,
+            token_param,
+            &serde_urlencoded::to_string(&params)?
+        );
+        let resp = Utils::request(
+            &self.client,
+            "GET",
+            &url,
+            vec![],
+            Some(&self.headers),
+            Some(10000),
+        )
+        .await?;
+        //println!("query_accurate_config_page result:{}",resp.get_lossy_string_body());
+        Ok(serde_json::from_slice(&resp.body)?)
     }
 
     pub async fn get_config(&self, key: &ConfigKey) -> anyhow::Result<String> {

@@ -9,6 +9,8 @@ use super::{
     inner_client::ConfigInnerRequestClient,
     listener::ConfigListener,
 };
+use crate::client::api_model::{ConsoleResult, NamespaceInfo};
+use crate::client::config_client::api_model::{ConfigInfoDto, ConfigQueryParams, ConfigSearchPage};
 use crate::{
     client::{
         auth::AuthActor,
@@ -125,6 +127,30 @@ impl ConfigClient {
             group: group.to_owned(),
             tenant: self.tenant.to_owned(),
         }
+    }
+
+    pub async fn get_namespace_list(&self) -> anyhow::Result<ConsoleResult<Vec<NamespaceInfo>>> {
+        self.request_client.get_namespace_list().await
+    }
+
+    pub async fn query_blur_config_page(
+        &self,
+        mut params: ConfigQueryParams,
+    ) -> anyhow::Result<ConfigSearchPage<ConfigInfoDto>> {
+        if params.tenant.is_none() {
+            params.tenant = Some(self.tenant.to_owned());
+        }
+        self.request_client.query_blur_config_page(params).await
+    }
+
+    pub async fn query_accurate_config_page(
+        &self,
+        mut params: ConfigQueryParams,
+    ) -> anyhow::Result<ConfigSearchPage<ConfigInfoDto>> {
+        if params.tenant.is_none() {
+            params.tenant = Some(self.tenant.to_owned());
+        }
+        self.request_client.query_accurate_config_page(params).await
     }
 
     pub async fn get_config(&self, key: &ConfigKey) -> anyhow::Result<String> {

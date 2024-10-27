@@ -27,6 +27,10 @@ name="config"
 path = "src/config.rs"
 
 [[example]]
+name="config_foreach"
+path = "src/config_foreach.rs"
+
+[[example]]
 name="naming_register"
 path = "src/naming_register.rs"
 
