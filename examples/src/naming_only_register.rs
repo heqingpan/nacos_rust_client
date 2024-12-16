@@ -1,6 +1,7 @@
 #![allow(unused_imports, unreachable_code)]
 use actix::{Actor, Addr};
 use ctrlc;
+use nacos_rust_client::client::auth::AuthActor;
 use nacos_rust_client::client::naming_client::{InstanceDefaultListener, ServiceInstanceKey};
 use nacos_rust_client::conn_manage;
 use nacos_rust_client::conn_manage::conn_msg::NamingRequest;
@@ -84,7 +85,11 @@ fn build_one_manage_addr(conn_manage:ConnManage) -> Addr<ConnManage> {
 
 fn build_conn_manages(thread_num: u16) -> Vec<Addr<ConnManage>> {
     let mut rlist = vec![];
-    let endpoint = ServerEndpointInfo::new("127.0.0.1:8848,127.0.0.1:8848");
+    let endpoint = Arc::new(ServerEndpointInfo::new("127.0.0.1:8848,127.0.0.1:8848"));
+    
+    let auth_actor = AuthActor::new(endpoint.clone(), None);
+    let auth_addr = start_actor_at_new_thread(auth_actor);
+    
     for _ in 0..thread_num {
         let conn_manage = ConnManage::new(
             endpoint.hosts.clone(),
@@ -92,6 +97,7 @@ fn build_conn_manages(thread_num: u16) -> Vec<Addr<ConnManage>> {
             None,
             Default::default(),
             Default::default(),
+            auth_addr.clone(),
         );
         let conn_manage_addr = start_actor_at_new_thread(conn_manage);
         rlist.push(conn_manage_addr);
