@@ -1,5 +1,5 @@
-use examples::proto::hello::greeter_client::GreeterClient;
-use examples::proto::hello::HelloRequest;
+use examples::proto::helloworld::greeter_client::GreeterClient;
+use examples::proto::helloworld::HelloRequest;
 use nacos_rust_client::client::naming_client::NamingClient;
 use nacos_rust_client::client::naming_client::{QueryInstanceListParams, ServiceInstanceKey};
 use nacos_tonic_discover::TonicDiscoverFactory;
