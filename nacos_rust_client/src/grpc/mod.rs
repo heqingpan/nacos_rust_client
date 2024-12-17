@@ -16,6 +16,7 @@ pub mod channel;
 pub mod config_request_utils;
 pub mod constant;
 pub mod grpc_client;
+#[allow(non_camel_case_types)]
 pub mod nacos_proto;
 pub mod naming_request_utils;
 pub mod utils;
