@@ -3,8 +3,8 @@ use nacos_rust_client::client::naming_client::NamingClient;
 use tokio::sync::mpsc;
 use tonic::{transport::Server, Request, Response, Status};
 
-use examples::proto::hello::greeter_server::{Greeter, GreeterServer};
-use examples::proto::hello::{HelloReply, HelloRequest};
+use examples::proto::helloworld::greeter_server::{Greeter, GreeterServer};
+use examples::proto::helloworld::{HelloReply, HelloRequest};
 
 #[derive(Default)]
 pub struct MyGreeter {}

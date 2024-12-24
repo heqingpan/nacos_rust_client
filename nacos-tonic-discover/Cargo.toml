@@ -13,7 +13,7 @@ edition = "2021"
 
 [dependencies]
 nacos_rust_client = { version = "0.3", path = "../nacos_rust_client" }
-tonic = "0.7"
+tonic = { workspace = true }
 tower = "0.4"
 actix = "0.12"
 log = "0"
