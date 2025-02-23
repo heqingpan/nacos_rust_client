@@ -1,4 +1,5 @@
 fn main() {
+    /*
     use std::env;
     use std::path::PathBuf;
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -9,4 +10,5 @@ fn main() {
         .unwrap();
 
     println!("cargo: rerun-if-changed=proto/helloworld/helloworld.proto");
+    */
 }
