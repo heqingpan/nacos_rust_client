@@ -86,9 +86,9 @@ impl InstanceVO {
 
     pub fn to_instance(self) -> Instance {
         let mut instance = Instance::default();
-        if let Some(service) = &self.service {
+        if let Some(service_name) = &self.service_name {
             if let Some((group_name, service_name)) =
-                NamingUtils::split_group_and_serivce_name(service)
+                NamingUtils::split_group_and_serivce_name(service_name)
             {
                 instance.group_name = group_name;
                 instance.service_name = service_name;
