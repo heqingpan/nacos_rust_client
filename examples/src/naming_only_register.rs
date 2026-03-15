@@ -86,10 +86,10 @@ fn build_one_manage_addr(conn_manage:ConnManage) -> Addr<ConnManage> {
 fn build_conn_manages(thread_num: u16) -> Vec<Addr<ConnManage>> {
     let mut rlist = vec![];
     let endpoint = Arc::new(ServerEndpointInfo::new("127.0.0.1:8848,127.0.0.1:8848"));
-    
+
     let auth_actor = AuthActor::new(endpoint.clone(), None);
     let auth_addr = start_actor_at_new_thread(auth_actor);
-    
+
     for _ in 0..thread_num {
         let conn_manage = ConnManage::new(
             endpoint.hosts.clone(),

@@ -59,24 +59,27 @@ impl HostInfo {
     }
 
     pub fn parse(addr: &str) -> Self {
-        let strs = addr.split(':').collect::<Vec<_>>();
         let mut port = 8848u32;
         let mut grpc_port = port + 1000;
-        let ip = strs.first().unwrap_or(&"127.0.0.1");
-        if let Some(p) = strs.get(1) {
-            let ports = p.split('#').collect::<Vec<_>>();
+        let ip;
+
+        if let Some(colon_pos) = addr.rfind(':') {
+            ip = &addr[..colon_pos];
+            let port_str = &addr[colon_pos + 1..];
+            let ports = port_str.split('#').collect::<Vec<_>>();
             if let Some(p) = ports.first() {
-                let pstr = (*p).to_owned();
-                port = pstr.parse::<u32>().unwrap_or(8848u32);
+                port = p.parse::<u32>().unwrap_or(8848u32);
                 grpc_port = port + 1000;
             }
             if let Some(p) = ports.get(1) {
-                let pstr = (*p).to_owned();
-                grpc_port = pstr.parse::<u32>().unwrap_or(port + 1000);
+                grpc_port = p.parse::<u32>().unwrap_or(port + 1000);
             }
+        } else {
+            ip = if addr.is_empty() { "127.0.0.1" } else { addr };
         }
+
         Self {
-            ip: (*ip).to_owned(),
+            ip: ip.to_owned(),
             port,
             grpc_port,
         }
@@ -242,5 +245,34 @@ mod tests {
             get_md5("hello"),
             String::from("5d41402abc4b2a76b9719d911017c592")
         );
+    }
+
+    #[test]
+    fn test_parse_ipv4() {
+        let host = HostInfo::parse("127.0.0.1:8848");
+        assert_eq!(host.ip, "127.0.0.1");
+        assert_eq!(host.port, 8848);
+    }
+
+    #[test]
+    fn test_parse_ipv6() {
+        let host = HostInfo::parse("[::1]:8848");
+        assert_eq!(host.ip, "[::1]");
+        assert_eq!(host.port, 8848);
+    }
+
+    #[test]
+    fn test_parse_ipv6_full() {
+        let host = HostInfo::parse("[2001:db8::1]:8848");
+        assert_eq!(host.ip, "[2001:db8::1]");
+        assert_eq!(host.port, 8848);
+    }
+
+    #[test]
+    fn test_parse_with_grpc_port() {
+        let host = HostInfo::parse("127.0.0.1:8848#9848");
+        assert_eq!(host.ip, "127.0.0.1");
+        assert_eq!(host.port, 8848);
+        assert_eq!(host.grpc_port, 9848);
     }
 }
