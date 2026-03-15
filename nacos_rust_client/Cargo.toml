@@ -34,4 +34,4 @@ md-5 = "0.10.0"
 hex = "0.4"
 
 [build-dependencies]
-tonic-build = "*"
+tonic-build = "0.12"
